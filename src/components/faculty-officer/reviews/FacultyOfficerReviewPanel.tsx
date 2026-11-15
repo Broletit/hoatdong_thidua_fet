@@ -29,7 +29,7 @@ export default function FacultyOfficerReviewPanel({
   const [noteError, setNoteError] = useState(false);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
-  async function submit(decision: "approve" | "revision" | "reject") {
+  async function submit(decision: "approve" | "approve_final" | "revision" | "reject") {
     setMessage("");
     setError("");
 
@@ -50,7 +50,7 @@ export default function FacultyOfficerReviewPanel({
         const result = await reviewSubmission(submissionId, decision, formData);
 
         setMessage(result.message || "Xử lý thành công.");
-        if (decision === "approve") {
+        if (decision === "approve" || decision === "approve_final") {
           const nextParams = new URLSearchParams(searchParams.toString());
           nextParams.set("mode", "view");
           router.replace(`${pathname}?${nextParams.toString()}`);
@@ -120,14 +120,35 @@ export default function FacultyOfficerReviewPanel({
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
             {requirementsMet ? (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => submit("approve")}
-              className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {pending ? "Đang xử lý..." : "Duyệt hoàn tất"}
-            </button>
+              reviewRound === 1 ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => submit("approve")}
+                    className="inline-flex items-center justify-center rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {pending ? "Đang xử lý..." : "Đạt vòng 1"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => submit("approve_final")}
+                    className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {pending ? "Đang xử lý..." : "Đạt chính thức"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => submit("approve")}
+                  className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {pending ? "Đang xử lý..." : "Đạt chính thức"}
+                </button>
+              )
             ) : (
             <>
             <button

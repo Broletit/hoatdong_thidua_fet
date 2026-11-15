@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireStudentContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
-import { assertEventAcceptsSubmissions } from "@/lib/events/eventSubmissionPhase";
+import {
+  assertEventAcceptsSubmissions,
+  assertEventAllowsRevision,
+} from "@/lib/events/eventSubmissionPhase";
 import { evaluateSubmissionAuto } from "@/server/events/evaluateSubmissionAuto";
 import { cloneCriteriaTemplateToEvent } from "@/server/events/cloneCriteriaTemplateToEvent";
 import {
@@ -38,7 +41,7 @@ export async function ensureStudentSubmissionDraft(eventId: number) {
       FROM events
       WHERE id = ?
         AND type = 'student'
-        AND status = 'published'
+        AND status IN ('published', 'closed')
       LIMIT 1
       `, [eventId])) as EventRow | undefined;
 
@@ -50,12 +53,12 @@ export async function ensureStudentSubmissionDraft(eventId: number) {
       WHERE es.event_id=? AND cm.user_id=? AND cm.left_at IS NULL)`, [eventId, eventId, user.id]));
   if (!inScope) throw new Error("Bạn không thuộc phạm vi tham gia đợt xét này.");
 
-  assertEventAcceptsSubmissions({
+  const eventState = {
     status: event.status,
     startAt: event.start_at,
     endAt: event.end_at,
     allowLate: Number(event.allow_late ?? 0) === 1,
-  });
+  };
 
   const eventCriteriaCount = Number((await db.first<{total:number}>("SELECT COUNT(*) total FROM event_criteria_items WHERE event_id=?", [eventId]))?.total ?? 0);
   if (eventCriteriaCount === 0 && Number(event.criteria_template_id) > 0) {
@@ -76,6 +79,11 @@ export async function ensureStudentSubmissionDraft(eventId: number) {
         `Hồ sơ hiện ở trạng thái “${getSubmissionStatusLabel(existed.status)}” nên không thể chỉnh sửa.`
       );
     }
+    if (existed.status === "draft") {
+      assertEventAcceptsSubmissions(eventState);
+    } else {
+      assertEventAllowsRevision(eventState);
+    }
 
     (await evaluateSubmissionAuto(Number(existed.id)));
 
@@ -84,6 +92,8 @@ export async function ensureStudentSubmissionDraft(eventId: number) {
       submissionId: Number(existed.id),
     };
   }
+
+  assertEventAcceptsSubmissions(eventState);
 
   const classRow = (await db.first(`
       SELECT class_id

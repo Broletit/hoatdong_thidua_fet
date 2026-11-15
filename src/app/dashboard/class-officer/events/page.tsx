@@ -65,7 +65,7 @@ export default async function ClassOfficerEventsPage({
 
   const where: string[] = [
     "e.type = 'student'",
-    "e.status = 'published'",
+    "e.status IN ('published', 'closed')",
     "e.term_id = ?",
     `(NOT EXISTS (SELECT 1 FROM event_scopes es WHERE es.event_id=e.id)
       OR EXISTS (SELECT 1 FROM event_scopes es WHERE es.event_id=e.id AND es.class_id=?))`,

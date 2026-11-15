@@ -26,7 +26,7 @@ export default function useConfirmation() {
     resolver.current?.(null);
     return new Promise(resolve => { resolver.current = resolve; setRequest(options); });
   }
-  const modal = request ? createPortal(<dialog ref={dialog} aria-labelledby={titleId}
+  const modal = request ? createPortal(<dialog key={titleId} ref={dialog} aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); finish(null); }}
     onClick={event => { if (event.target === event.currentTarget) finish(null); }}
     className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border-0 bg-white p-0 text-left shadow-xl backdrop:bg-slate-900/50">
@@ -52,6 +52,6 @@ export default function useConfirmation() {
         <button type="submit" className="rounded-lg px-3 py-2 text-sm font-semibold text-rose-700">{request.confirmLabel ?? 'Xác nhận'}</button>
       </div>
     </form>
-  </dialog>, document.body) : null;
+  </dialog>, document.body, titleId) : null;
   return { confirm, modal };
 }

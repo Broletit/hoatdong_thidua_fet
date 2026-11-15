@@ -55,7 +55,9 @@ export async function updateEventStatus(eventId: number, nextStatus: EventStatus
     `, [nextStatus, nextStatus, nextStatus, eventId]));
 
   revalidatePath("/dashboard/admin/events");
+  revalidatePath(`/dashboard/admin/events/${eventId}`);
   revalidatePath(`/dashboard/admin/events/${eventId}/edit`);
+  revalidatePath("/dashboard", "layout");
 
   return {
     ok: true,

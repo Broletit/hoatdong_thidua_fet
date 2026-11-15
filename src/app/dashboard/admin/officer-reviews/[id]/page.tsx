@@ -31,6 +31,7 @@ type CriteriaRow = {
   group_code: string;
   group_title: string;
   min_required: number;
+  required_count: number;
   evidence_type: string;
   is_required: number;
   auto_passed: number | null;
@@ -121,21 +122,14 @@ export default async function AdminOfficerReviewDetailPage({
         i.group_code,
         g.title AS group_title,
         g.min_required,
+        GREATEST(1, COALESCE(i.required_count, 1)) AS required_count,
         g.score_max AS group_score_max,
         i.score_max,
         i.evidence_type,
         i.is_required,
-        COALESCE(ar.passed, (
-          SELECT MAX(CASE WHEN registration.status = 'attended' THEN 1 ELSE 0 END)
-          FROM criteria_activity_rules rule
-          LEFT JOIN activity_registrations registration
-            ON registration.activity_id = rule.activity_id
-           AND registration.user_id = s.user_id
-          WHERE rule.template_id = e.criteria_template_id
-            AND rule.criteria_code = i.code
-        )) AS auto_passed,
+        COALESCE(ar.passed, 0) AS auto_passed,
         COALESCE(ar.message, (
-          SELECT CONCAT('Đạt tự động từ hoạt động: ', GROUP_CONCAT(activity.title SEPARATOR ', '))
+          SELECT CONCAT(CONCAT('Hệ thống ghi nhận bạn đã tham gia hoạt động: ', GROUP_CONCAT(activity.title SEPARATOR ', ')), '. Hãy nộp minh chứng cho hoạt động này.')
           FROM criteria_activity_rules rule
           INNER JOIN activities activity ON activity.id = rule.activity_id
           INNER JOIN activity_registrations registration
@@ -187,6 +181,17 @@ export default async function AdminOfficerReviewDetailPage({
       ORDER BY uploaded_at DESC, id DESC
       `, [submissionId])) as FileRow[];
 
+  const unitRows = (await db.rows<{ id: number; criteria_code: string; note: string | null; file_id: number | null; file_name: string | null; review_decision: string | null }>(`
+      SELECT eu.id, eu.criteria_code, eu.note,
+        (SELECT sf.id FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_id,
+        (SELECT sf.file_name FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_name,
+        (SELECT er.decision FROM submission_evidence_reviews er WHERE er.evidence_unit_id = eu.id AND er.round = 1 ORDER BY er.round DESC LIMIT 1) AS review_decision
+      FROM submission_evidence_units eu
+      WHERE eu.submission_id = ?
+        AND EXISTS(SELECT 1 FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL)
+      ORDER BY eu.id ASC
+      `, [submissionId]));
+
   const reviews = (await db.rows(`
       SELECT
         r.round,
@@ -216,6 +221,15 @@ export default async function AdminOfficerReviewDetailPage({
         id: Number(file.id),
         fileName: String(file.file_name ?? ""),
         mimeType: String(file.mime_type ?? ""),
+      })),
+    evidence_units: unitRows
+      .filter((unit) => unit.criteria_code === item.code)
+      .map((unit) => ({
+        id: Number(unit.id),
+        note: unit.note,
+        fileId: unit.file_id ? Number(unit.file_id) : null,
+        fileName: unit.file_name,
+        reviewDecision: unit.review_decision,
       })),
   }));
   const requirements = (await evaluateSubmissionRequirements(db, submission.id, "approved"));

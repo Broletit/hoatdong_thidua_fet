@@ -42,6 +42,7 @@ type CriteriaRow = {
   group_code: string;
   group_title: string;
   min_required: number;
+  required_count: number;
   evidence_type: string;
   is_required: number;
   auto_passed: number | null;
@@ -59,7 +60,6 @@ type ReviewRow = {
   decision: string;
   note: string | null;
   created_at: string | null;
-  reviewer_name: string | null;
 };
 
 type FileRow = {
@@ -117,6 +117,7 @@ export default async function StudentSubmissionDetailPage({
         i.group_code,
         g.title AS group_title,
         g.min_required,
+        GREATEST(1, COALESCE(i.required_count, 1)) AS required_count,
         i.evidence_type,
         i.is_required,
         ar.passed AS auto_passed,
@@ -134,8 +135,8 @@ export default async function StudentSubmissionDetailPage({
           WHERE sf.submission_id=s.id AND sf.criteria_code=i.code
           ORDER BY sf.uploaded_at DESC,sf.id DESC LIMIT 1
         ) AS file_name,
-        (SELECT cr.decision FROM submission_criteria_reviews cr WHERE cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=s.review_round LIMIT 1) AS review_decision,
-        (SELECT cr.round FROM submission_criteria_reviews cr WHERE cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=s.review_round LIMIT 1) AS review_round
+        (SELECT cr.decision FROM submission_criteria_reviews cr WHERE cr.submission_id=s.id AND cr.criteria_code=i.code ORDER BY cr.round DESC LIMIT 1) AS review_decision,
+        (SELECT cr.round FROM submission_criteria_reviews cr WHERE cr.submission_id=s.id AND cr.criteria_code=i.code ORDER BY cr.round DESC LIMIT 1) AS review_round
       FROM submissions s
       INNER JOIN event_criteria_items i
         ON i.event_id = s.event_id
@@ -157,10 +158,8 @@ export default async function StudentSubmissionDetailPage({
         reviews.round,
         reviews.decision,
         reviews.note,
-        reviews.created_at,
-        reviewer.full_name AS reviewer_name
+        reviews.created_at
       FROM reviews
-      LEFT JOIN users reviewer ON reviewer.id = reviews.reviewer_id
       WHERE reviews.submission_id = ?
       ORDER BY reviews.id DESC
       `, [submissionId])) as ReviewRow[];
@@ -176,23 +175,36 @@ export default async function StudentSubmissionDetailPage({
       ORDER BY uploaded_at DESC, id DESC
       `, [submissionId])) as FileRow[];
 
+  const unitRows = (await db.rows<{ id: number; criteria_code: string; note: string | null; file_id: number | null; file_name: string | null; review_decision: string | null }>(`
+      SELECT eu.id, eu.criteria_code, eu.note,
+        (SELECT sf.id FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_id,
+        (SELECT sf.file_name FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_name,
+        (SELECT er.decision FROM submission_evidence_reviews er WHERE er.evidence_unit_id = eu.id ORDER BY er.round DESC LIMIT 1) AS review_decision
+      FROM submission_evidence_units eu
+      WHERE eu.submission_id = ?
+        AND EXISTS(SELECT 1 FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL)
+      ORDER BY eu.id ASC
+      `, [submissionId]));
+
   const editable = canEditSubmission(submission.status, {status:submission.event_status,startAt:submission.event_start_at,endAt:submission.event_end_at,allowLate:Number(submission.event_allow_late)===1});
   const timeline = (await getSubmissionTimeline(submissionId)).map((item) => ({
     ...item,
+    actorName: null,
   }));
   const reviewItems = reviews.map((item) => ({
     round: Number(item.round),
     decision: String(item.decision ?? ""),
     note: item.note ? String(item.note) : null,
-    reviewerName: item.reviewer_name ? String(item.reviewer_name) : null,
+    reviewerName: null,
     createdAt: item.created_at ? String(item.created_at) : null,
   }));
-  const firstMissingCriterion=criteria.find((item)=>Number(item.auto_passed??0)!==1&&!String(item.content_text??"").trim()&&Number(item.file_count??0)===0);
+  const firstMissingCriterion=criteria.find((item)=>Number(item.auto_passed??0)!==1&&item.review_decision!=="pass"&&!String(item.content_text??"").trim()&&Number(item.file_count??0)<Math.max(1,Number(item.required_count??1)));
   const editHref=`/dashboard/student/events/${submission.event_id}?edit=1${firstMissingCriterion?`#criterion-${firstMissingCriterion.code}`:"#minh-chung-can-bo-sung"}`;
   const detailItems=criteria.map((criterion) => ({
     ...criterion,
     auto_message: formatAutoCriteriaMessage(criterion.auto_message,criterion.matched_activity_titles),
     files: files.filter((file) => file.criteria_code === criterion.code).map((file) => ({id:Number(file.id),fileName:String(file.file_name ?? ""),mimeType:String(file.mime_type ?? "")})),
+    evidence_units: unitRows.filter((u) => u.criteria_code === criterion.code).map((u) => ({id:Number(u.id),note:u.note,fileId:u.file_id?Number(u.file_id):null,fileName:u.file_name,reviewDecision:u.review_decision})),
   })).filter((criterion) => Number(criterion.is_required) === 1 || Number(criterion.auto_passed ?? 0) === 1 || Boolean(criterion.content_text?.trim()) || criterion.files.length > 0 || ["pass", "fail"].includes(String(criterion.review_decision ?? "")));
 
   return (
@@ -253,6 +265,7 @@ export default async function StudentSubmissionDetailPage({
         title="Kết quả xét duyệt"
         emptyMessage="Chưa có phản hồi xét duyệt."
         resultsOnly
+        hideActor
       />
 
       <StudentSubmissionCriteriaList

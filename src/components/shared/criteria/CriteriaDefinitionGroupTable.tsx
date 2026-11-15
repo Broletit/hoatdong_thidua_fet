@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import CriteriaTable from "./CriteriaTable";
+import ExpandableText from "@/components/common/ExpandableText";
 
 export type CriteriaDefinitionItem = {
   code: string;
@@ -48,10 +49,10 @@ export default function CriteriaDefinitionGroupTable({ items, officer }: { items
       </tr></thead>
       <tbody className="divide-y divide-slate-100">{visibleItems.map((item, index) => <tr key={item.code} className="even:bg-slate-50/60 hover:bg-blue-50/50">
         <td className="px-2 py-4 text-center text-sm">{(page - 1) * pageSize + index + 1}</td><td className="px-2 py-4 text-sm font-medium">{item.code}</td>
-        <td data-column-align="left" className="px-2 py-4 text-left text-sm"><div className="whitespace-normal! break-words font-medium text-slate-900">{item.title}</div>{item.description ? <div className="mt-1 whitespace-normal! break-words text-slate-500">{item.description}</div> : null}</td>
+        <td data-column-align="left" className="px-2 py-4 text-left text-sm"><div className="whitespace-normal! break-words font-medium text-slate-900">{item.title}</div>{item.description ? <div className="mt-1 whitespace-normal! break-words text-slate-500"><ExpandableText text={item.description} maxChars={160} /></div> : null}</td>
         <td className="px-2 py-4 text-center"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${item.isRequired ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600"}`}>{item.isRequired ? "Có" : "Không"}</span></td>
         {officer ? <td className="px-2 py-4 text-center text-sm">{item.scoreMax}</td> : null}
-        <td data-column-align="left" className="px-2 py-4 text-left text-sm text-slate-700"><div className="whitespace-normal! break-words">{item.activities.length ? item.activities.join(", ") : null}{item.activities.length && item.conductScore != null ? <br /> : null}{item.conductScore != null ? `Điểm rèn luyện tối thiểu: ${item.conductScore}` : null}{!item.activities.length && item.conductScore == null ? "Nộp minh chứng" : null}</div></td>
+        <td data-column-align="left" className="px-2 py-4 text-left text-sm text-slate-700"><div className="whitespace-normal! break-words">{item.evidenceType === "manual" ? "Chỉ nhập mô tả" : <>{item.activities.length ? item.activities.join(", ") : null}{item.activities.length && item.conductScore != null ? <br /> : null}{item.conductScore != null ? `Điểm rèn luyện tối thiểu: ${item.conductScore}` : null}{!item.activities.length && item.conductScore == null ? "Nộp minh chứng" : null}</>}</div></td>
       </tr>)}</tbody>
     </CriteriaTable>
     {items.length > pageSize ? <div className="flex items-center justify-end gap-2 border-x border-b border-slate-200 px-3 py-2"><button type="button" aria-label="Trang trước" disabled={page <= 1} onClick={() => setRequestedPage(page - 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 disabled:text-slate-300">‹</button><span className="whitespace-nowrap text-xs text-slate-500">Trang {page}/{totalPages}</span><button type="button" aria-label="Trang sau" disabled={page >= totalPages} onClick={() => setRequestedPage(page + 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 disabled:text-slate-300">›</button></div> : null}

@@ -174,17 +174,17 @@ export default async function ClassOfficerDashboardPage({ searchParams }: { sear
 
       <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-xl font-semibold text-slate-900">Hồ sơ cần ưu tiên duyệt</h2><p className="mt-1 text-sm text-slate-500">Sắp xếp theo thời gian chờ lâu nhất.</p></div>
+          <div><h2 className="text-xl font-semibold text-slate-900">Hồ sơ đang chờ duyệt</h2><p className="mt-1 text-sm text-slate-500">Sắp xếp theo thời gian chờ lâu nhất.</p></div>
           <Link href="/dashboard/class-officer/reviews" className="text-sm font-semibold text-blue-700 hover:text-blue-900">Xem tất cả</Link>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {pendingReviews.length ? pendingReviews.map((item) => (
-            <Link key={item.id} href={`/dashboard/class-officer/reviews/${item.id}`} className="rounded-2xl border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50/40">
+            <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
               <div className="font-semibold text-slate-900">{item.student_name}</div>
               <div className="mt-1 text-sm text-slate-500">{item.mssv}</div>
               <div className="mt-3 line-clamp-1 text-sm text-slate-700">{item.event_title}</div>
               <div className="mt-2 text-xs text-amber-700">Chờ từ {formatDateTimeVN(item.updated_at)}</div>
-            </Link>
+            </div>
           )) : <div className="col-span-full"><Empty text="Không có hồ sơ đang chờ duyệt vòng 1." /></div>}
         </div>
       </section>

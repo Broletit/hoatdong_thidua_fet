@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/server/auth/getSessionUser";
 import type { LoginRoleContext } from "./role-context";
 
+/** Xác định đường dẫn dashboard mặc định theo ngữ cảnh vai trò đăng nhập. */
 function getDashboardPathByContext(context: LoginRoleContext) {
   switch (context) {
     case "admin":
@@ -16,6 +17,7 @@ function getDashboardPathByContext(context: LoginRoleContext) {
   }
 }
 
+/** Bắt buộc người dùng đã đăng nhập, đang hoạt động và đã đổi mật khẩu mặc định (nếu có). */
 export async function requireLogin() {
   const user = await getSessionUser();
 

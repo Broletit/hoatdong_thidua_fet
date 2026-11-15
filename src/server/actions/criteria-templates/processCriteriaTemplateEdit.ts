@@ -6,7 +6,6 @@ import { getDatabase } from "@/server/db/mysql";
 import { evaluateSubmissionAuto } from "@/server/events/evaluateSubmissionAuto";
 import { evaluateSubmission } from "@/server/submissions/evaluateSubmission";
 import { evaluateSubmissionRequirements } from "@/server/submissions/evaluateSubmissionRequirements";
-import { evaluateAutoCriteria } from "@/server/events/evaluateAutoCriteria";
 
 type Draft={draft_template_id:number;status:string;stage:string;submission_cursor:number;cache_event_cursor:number;cache_user_cursor:number};
 type Submission={id:number;event_id:number;status:string;event_status:string;event_type:string;end_at:string;user_id:number};
@@ -44,13 +43,13 @@ export async function processCriteriaTemplateEdit(templateId:number){
   if(draft.stage==="submissions"){
     const rows=await db.rows<Submission>(`SELECT s.id,s.event_id,s.user_id,s.status,e.status event_status,e.type event_type,e.end_at
       FROM submissions s INNER JOIN events e ON e.id=s.event_id
-      WHERE e.criteria_template_id=? AND s.id>? ORDER BY s.id LIMIT 20`,[templateId,draft.submission_cursor]);
+      WHERE e.criteria_template_id=? AND s.id>? ORDER BY s.id LIMIT 100`,[templateId,draft.submission_cursor]);
     for(const row of rows){
       await evaluateSubmissionAuto(row.id);
       if(row.status!=="draft"){
         const requirements=await evaluateSubmissionRequirements(db,row.id,"approved");
         if(row.status==="passed"&&!requirements.valid){
-          const nextStatus=row.event_status==="closed"||new Date(row.end_at).getTime()<Date.now()?"failed":"needs_revision_v2";
+          const nextStatus=new Date(row.end_at).getTime()<Date.now()?"failed":"needs_revision_v2";
           await db.withTransaction(async()=>{
             await db.execute("UPDATE submissions SET status=?,updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND status='passed'",[nextStatus,row.id]);
             await db.execute("INSERT INTO submission_timeline(submission_id,action,from_status,to_status,message,created_at) VALUES(?,'criteria_update','passed',?,?,CURRENT_TIMESTAMP(3))",[row.id,nextStatus,"Bộ tiêu chuẩn thay đổi; hồ sơ không còn đáp ứng đủ điều kiện."]);
@@ -62,31 +61,58 @@ export async function processCriteriaTemplateEdit(templateId:number){
         await evaluateSubmission(row.id);
         await db.execute("UPDATE event_results er INNER JOIN submissions s ON s.id=er.submission_id SET er.score_total=s.score_total,er.updated_at=CURRENT_TIMESTAMP(3) WHERE er.submission_id=?",[row.id]);
       }
-      await db.execute("UPDATE criteria_template_edit_drafts SET submission_cursor=? WHERE original_template_id=? AND status='processing'",[row.id,templateId]);
     }
-    if(rows.length===20)return {done:false,processed:rows.length};
+    if(rows.length>0){
+      const lastId=rows[rows.length-1].id;
+      await db.execute("UPDATE criteria_template_edit_drafts SET submission_cursor=? WHERE original_template_id=? AND status='processing'",[lastId,templateId]);
+    }
+    if(rows.length===100)return {done:false,processed:rows.length};
     await db.execute("UPDATE criteria_template_edit_drafts SET stage='cache' WHERE original_template_id=?",[templateId]);
     return {done:false,processed:rows.length};
   }
   const cacheRows=await db.rows<CacheRow>(`SELECT rac.event_id,rac.user_id,rac.assessment_type FROM report_assessment_cache rac
     INNER JOIN events e ON e.id=rac.event_id WHERE e.criteria_template_id=?
     AND (rac.event_id>? OR (rac.event_id=? AND rac.user_id>?))
-    ORDER BY rac.event_id,rac.user_id LIMIT 20`,[templateId,draft.cache_event_cursor,draft.cache_event_cursor,draft.cache_user_cursor]);
-  let currentEvent=0;
-  let criteria:Criterion[]=[];
-  for(const row of cacheRows){
-    if(row.event_id!==currentEvent){
-      currentEvent=row.event_id;
-      criteria=await db.rows<Criterion>(`SELECT i.code,i.group_code,g.title group_title,i.is_required,g.min_required FROM event_criteria_items i
-        INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code WHERE i.event_id=? ORDER BY g.sort_order,i.sort_order`,[row.event_id]);
+    ORDER BY rac.event_id,rac.user_id LIMIT 500`,[templateId,draft.cache_event_cursor,draft.cache_event_cursor,draft.cache_user_cursor]);
+  if(cacheRows.length>0){
+    const eventIds=Array.from(new Set(cacheRows.map(r=>r.event_id)));
+    const criteriaByEvent=new Map<number,Array<Criterion&{evidence_type:string;required_count:number}>>();
+    for(const evId of eventIds){
+      const evCriteria=await db.rows<Criterion&{evidence_type:string;required_count:number}>(`SELECT i.code,i.group_code,g.title group_title,i.is_required,g.min_required,i.evidence_type,i.required_count FROM event_criteria_items i
+        INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code WHERE i.event_id=? ORDER BY g.sort_order,i.sort_order`,[evId]);
+      criteriaByEvent.set(evId,evCriteria);
     }
-    const passed=new Set((await evaluateAutoCriteria({eventId:row.event_id,userId:row.user_id})).filter(item=>item.passed).map(item=>item.criteriaCode));
-    const result=assess(criteria,passed);
-    await db.execute(`UPDATE report_assessment_cache SET achieved_criteria=?,total_criteria=?,missing_required=?,is_eligible=?,progress_percent=?,standard_progress_json=?,refreshed_at=CURRENT_TIMESTAMP(3)
-      WHERE event_id=? AND user_id=?`,[result.achieved,result.total,result.missingRequired,result.isEligible,result.progressPercent,JSON.stringify(result.standardProgress),row.event_id,row.user_id]);
-    await db.execute("UPDATE criteria_template_edit_drafts SET cache_event_cursor=?,cache_user_cursor=? WHERE original_template_id=? AND status='processing'",[row.event_id,row.user_id,templateId]);
+    const activityCounts=await db.rows<{user_id:number;criteria_code:string;matched_count:number}>(`
+      SELECT ar.user_id, r.criteria_code, COUNT(DISTINCT r.activity_id) AS matched_count
+      FROM criteria_activity_rules r
+      INNER JOIN activities a ON a.id = r.activity_id
+      INNER JOIN activity_registrations ar ON ar.activity_id = a.id AND ar.status = 'attended'
+      WHERE r.template_id = ?
+      GROUP BY ar.user_id, r.criteria_code
+    `,[templateId]);
+    const userActivityMap=new Map<string,number>();
+    for(const item of activityCounts){
+      userActivityMap.set(`${item.user_id}:${item.criteria_code}`,Number(item.matched_count??0));
+    }
+    await db.withTransaction(async()=>{
+      for(const row of cacheRows){
+        const evCriteria=criteriaByEvent.get(row.event_id)??[];
+        const passed=new Set<string>();
+        for(const item of evCriteria){
+          if(item.evidence_type==="auto"||item.evidence_type==="both"){
+            const matched=userActivityMap.get(`${row.user_id}:${item.code}`)??0;
+            if(matched>=Math.max(1,Number(item.required_count??1)))passed.add(item.code);
+          }
+        }
+        const result=assess(evCriteria,passed);
+        await db.execute(`UPDATE report_assessment_cache SET achieved_criteria=?,total_criteria=?,missing_required=?,is_eligible=?,progress_percent=?,standard_progress_json=?,refreshed_at=CURRENT_TIMESTAMP(3)
+          WHERE event_id=? AND user_id=?`,[result.achieved,result.total,result.missingRequired,result.isEligible,result.progressPercent,JSON.stringify(result.standardProgress),row.event_id,row.user_id]);
+      }
+      const last=cacheRows[cacheRows.length-1];
+      await db.execute("UPDATE criteria_template_edit_drafts SET cache_event_cursor=?,cache_user_cursor=? WHERE original_template_id=? AND status='processing'",[last.event_id,last.user_id,templateId]);
+    });
   }
-  if(cacheRows.length===20)return {done:false,processed:cacheRows.length};
+  if(cacheRows.length===500)return {done:false,processed:cacheRows.length};
   await db.withTransaction(async()=>{
     const current=await db.first<Draft>("SELECT * FROM criteria_template_edit_drafts WHERE original_template_id=? FOR UPDATE",[templateId]);
     if(!current||current.status!=="processing")return;

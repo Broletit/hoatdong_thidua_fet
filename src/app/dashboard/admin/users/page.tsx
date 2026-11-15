@@ -217,10 +217,10 @@ export default async function AdminUsersPage({
                   <td className="px-4 py-4">
                     <span
                       className={[
-                        "rounded-full px-3 py-1 text-xs font-semibold",
+                        "inline-flex rounded-full border px-3 py-1 text-xs font-semibold",
                         item.is_active
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-100 text-slate-600",
+                          ? "border-emerald-200 bg-emerald-100 text-emerald-800"
+                          : "border-slate-200 bg-slate-100 text-slate-600",
                       ].join(" ")}
                     >
                       {item.is_active ? "Đang hoạt động" : "Đã vô hiệu hóa"}

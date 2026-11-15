@@ -65,7 +65,7 @@ export default async function CandidateAnalysisPage({ params, searchParams }: { 
   const users = (await db.rows(`SELECT u.id,u.full_name,u.mssv,c.code class_code,c.cohort class_cohort FROM users u INNER JOIN class_members cm ON cm.user_id=u.id AND cm.left_at IS NULL INNER JOIN classes c ON c.id=cm.class_id WHERE u.is_active=1 AND u.role IN ('student','class_officer','faculty_officer') AND (NOT EXISTS(SELECT 1 FROM event_scopes es WHERE es.event_id=?) OR EXISTS(SELECT 1 FROM event_scopes es WHERE es.event_id=? AND es.class_id=cm.class_id)) ORDER BY c.code,u.mssv`, [eventId, eventId])) as Array<{ id: number; full_name: string; mssv: string; class_code: string; class_cohort: number | null }>;
   const submissionRows = (await db.rows(`SELECT s.id,s.user_id,s.status,s.submitted_at,EXISTS(SELECT 1 FROM submission_support_requests sr WHERE sr.submission_id=s.id AND sr.status='open') support FROM submissions s WHERE s.event_id=?`, [eventId])) as Array<{ id: number; user_id: number; status: string; submitted_at: string | null; support: number }>;
   const submissionsByUser = new Map(submissionRows.map((item) => [item.user_id, item]));
-  const fileRows=(await db.rows(`SELECT DISTINCT s.user_id,sf.criteria_code code FROM submissions s JOIN submission_ready_files sf ON sf.submission_id=s.id WHERE s.event_id=?`, [eventId])) as Array<{user_id:number;code:string}>;
+  const fileRows=(await db.rows(`SELECT DISTINCT s.user_id,sf.criteria_code code FROM submissions s JOIN submission_ready_files sf ON sf.submission_id=s.id WHERE s.event_id=? UNION SELECT DISTINCT s.user_id,si.criteria_code code FROM submissions s JOIN submission_items si ON si.submission_id=s.id JOIN event_criteria_items i ON i.event_id=s.event_id AND i.code=si.criteria_code WHERE s.event_id=? AND i.evidence_type='manual' AND TRIM(COALESCE(si.content_text,''))<>''`, [eventId, eventId])) as Array<{user_id:number;code:string}>;
   const autoRows=(await db.rows(`SELECT DISTINCT s.user_id,ar.criteria_code code FROM submissions s JOIN submission_auto_results ar ON ar.submission_id=s.id WHERE s.event_id=? AND ar.passed=1`, [eventId])) as Array<{user_id:number;code:string}>;
   const reviewRows=(await db.rows(`SELECT s.user_id,cr.criteria_code code,cr.decision FROM submissions s JOIN submission_criteria_reviews cr ON cr.submission_id=s.id WHERE s.event_id=? AND cr.round<=s.review_round ORDER BY cr.round DESC,cr.reviewed_at DESC,cr.id DESC`, [eventId])) as Array<{user_id:number;code:string;decision:string}>;
   const reviews=new Map<string,string>();
@@ -86,6 +86,7 @@ export default async function CandidateAnalysisPage({ params, searchParams }: { 
     const assessment=assessCandidateCriteria(criteria,criteriaGroups,{
       submitted:submitted||["failed","rejected","closed","passed","approved"].includes(submission?.status??""),
       autoPassed:new Set(criteria.filter(item=>{
+        if(item.evidence_type==="manual")return false;
         const key=user.id+":"+item.code;
         const minimum=conductByCriterion.get(item.code);
         return autoPassed.has(key)||activityPassed.has(key)||(minimum!==undefined&&(conductByUser.get(user.id)??0)>=minimum);

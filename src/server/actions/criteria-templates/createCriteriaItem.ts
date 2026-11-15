@@ -27,7 +27,12 @@ export async function createCriteriaItem(
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value) && value > 0);
 
-  const evidenceType = String(formData.get("evidenceType") ?? (activityIds.length > 0 ? "both" : "manual"));
+  const rawEvidenceType = String(formData.get("evidenceType") ?? (activityIds.length > 0 ? "both" : "manual")).trim();
+  const evidenceType = rawEvidenceType === "description" || rawEvidenceType === "manual"
+    ? "manual"
+    : ["both", "evidence", "auto"].includes(rawEvidenceType)
+      ? "both"
+      : "";
 
   if (!groupCode) throw new Error("Tiêu chuẩn không hợp lệ.");
   if (!title) throw new Error("Vui lòng nhập tên tiêu chí.");
@@ -38,8 +43,8 @@ export async function createCriteriaItem(
   if (!Number.isInteger(requiredCount) || requiredCount < 1) {
     throw new Error("Số lượng cần đạt phải là số nguyên từ 1 trở lên.");
   }
-  if (!["auto", "manual", "both"].includes(evidenceType)) {
-    throw new Error("Loại xét tiêu chí không hợp lệ.");
+  if (!["manual", "both"].includes(evidenceType)) {
+    throw new Error("Nguồn đạt không hợp lệ.");
   }
 
   const group = (await db.first(`
@@ -84,15 +89,17 @@ export async function createCriteriaItem(
 
     (await syncGroupMinimum(db, templateId));
 
-    for (const activityId of activityIds) {
-      (await db.execute(`
-        INSERT IGNORE INTO criteria_activity_rules (
-          template_id,
-          criteria_code,
-          activity_id
-        )
-        VALUES (?, ?, ?)
-        `, [templateId, code, activityId]));
+    if (evidenceType !== "manual") {
+      for (const activityId of activityIds) {
+        (await db.execute(`
+          INSERT IGNORE INTO criteria_activity_rules (
+            template_id,
+            criteria_code,
+            activity_id
+          )
+          VALUES (?, ?, ?)
+          `, [templateId, code, activityId]));
+      }
     }
   })));
 

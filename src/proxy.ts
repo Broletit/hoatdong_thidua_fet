@@ -32,7 +32,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.rewrite(destination);
   }
   if (pageRoute || apiRoute) {
-    if (pageRoute && (pageRoute[2] !== session.login_context.replaceAll("_", "-") || (pageRoute[2] === "admin" && session.role !== "admin"))) return new NextResponse("Không có quyền truy cập.", {status:403});
+    if (pageRoute && (pageRoute[2] !== session.login_context.replaceAll("_", "-") || (pageRoute[2] === "admin" && session.role !== "admin") || (pageRoute[2] === "class-officer" && (pageRoute[3] === "reviews" || pageRoute[3] === "submissions")))) return new NextResponse("Không có quyền truy cập.", {status:403});
     if (apiRoute?.[2].startsWith("admin/") && (session.login_context !== "admin" || session.role !== "admin")) return NextResponse.json({message:"Không có quyền truy cập."}, {status:403});
     const route = (pageRoute ?? apiRoute)!;
     const destination = request.nextUrl.clone();

@@ -46,7 +46,7 @@ export default async function StudentEventsPage({
   const phase = String(params.phase ?? "").trim();
 
   const where: string[] = [
-    `(e.status='published' OR (e.status='closed' AND s.id IS NOT NULL))`,
+    `e.status IN ('published', 'closed')`,
     `e.type = 'student'`,
     `e.term_id = ?`,
   ];

@@ -1,4 +1,5 @@
 import PaginatedTable from "@/components/common/PaginatedTable";
+import ExpandableText from "@/components/common/ExpandableText";
 import Link from "next/link";
 import { formatDateTimeVN } from "@/lib/utils/formatDateTimeVN";
 import type { StudentEventItem } from "./types";
@@ -51,8 +52,8 @@ export default function StudentEventsTable({
                     <div className="text-sm font-semibold text-slate-900">
                       {item.title}
                     </div>
-                    <div className="mt-1 line-clamp-2 text-xs text-slate-500">
-                      {item.description || "Chưa có mô tả"}
+                    <div className="mt-1 text-xs text-slate-500">
+                      <ExpandableText text={item.description || "Chưa có mô tả"} maxChars={140} />
                     </div>
                   </td>
 

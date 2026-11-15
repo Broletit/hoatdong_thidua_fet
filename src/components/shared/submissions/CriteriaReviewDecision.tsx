@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { reviewSubmissionCriterion } from "@/server/actions/reviews/reviewSubmissionCriterion";
 
-export default function CriteriaReviewDecision({ submissionId, criteriaCode, decision, disabled }: { submissionId:number; criteriaCode:string; decision:string|null; disabled:boolean }) {
+export default function CriteriaReviewDecision({ submissionId, criteriaCode, decision, disabled, evidenceUnitId }: { submissionId:number; criteriaCode:string; decision:string|null; disabled:boolean; evidenceUnitId?:number }) {
   const router=useRouter();
   const [pending,startTransition]=useTransition();
   const [error,setError]=useState("");
@@ -12,7 +12,7 @@ export default function CriteriaReviewDecision({ submissionId, criteriaCode, dec
     setError("");
     startTransition(async()=>{
       try {
-        await reviewSubmissionCriterion(submissionId,criteriaCode,value,value==="pass"?1:0);
+        await reviewSubmissionCriterion(submissionId,criteriaCode,value,evidenceUnitId);
         router.refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Không thể cập nhật đánh giá.");

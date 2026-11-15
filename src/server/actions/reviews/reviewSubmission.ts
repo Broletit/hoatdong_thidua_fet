@@ -19,22 +19,23 @@ type SubmissionRow = {
   review_open: number;
 };
 
-type ReviewDecision = "approve" | "reject" | "revision";
+type ReviewDecision = "approve" | "approve_final" | "reject" | "revision";
 
 function toStoredDecision(decision: ReviewDecision) {
-  if (decision === "approve") return "pass";
+  if (decision === "approve" || decision === "approve_final") return "pass";
   if (decision === "revision") return "revise";
   return "fail";
 }
 
 function nextStatusForV1(decision: ReviewDecision) {
+  if (decision === "approve_final") return "passed";
   if (decision === "approve") return "submitted_v2";
   if (decision === "revision") return "needs_revision_v1";
   return "failed";
 }
 
 function nextStatusForV2(decision: ReviewDecision) {
-  if (decision === "approve") return "passed";
+  if (decision === "approve" || decision === "approve_final") return "passed";
   if (decision === "revision") return "needs_revision_v1";
   return "failed";
 }
@@ -50,7 +51,7 @@ export async function reviewSubmission(
 
   const note = String(formData.get("note") ?? "").trim();
 
-  if (!["approve", "reject", "revision"].includes(decision)) {
+  if (!["approve", "approve_final", "reject", "revision"].includes(decision)) {
     throw new Error("Quyết định duyệt không hợp lệ.");
   }
 
@@ -62,7 +63,7 @@ export async function reviewSubmission(
         s.class_id,
         s.status,
         e.type AS event_type,
-        CASE WHEN e.status='published' AND CAST(e.end_at AS DATETIME(3))>=CURRENT_TIMESTAMP(3) THEN 1 ELSE 0 END AS review_open
+        CASE WHEN e.status IN ('published','closed') AND CAST(e.end_at AS DATETIME(3))>=CURRENT_TIMESTAMP(3) THEN 1 ELSE 0 END AS review_open
       FROM submissions s
       INNER JOIN events e ON e.id = s.event_id
       WHERE s.id = ?
@@ -89,17 +90,16 @@ export async function reviewSubmission(
   let nextStatus = "";
 
   if (submission.status === "submitted_v1") {
-    if (!["class_officer", "faculty_officer", "admin"].includes(actingRole)) {
+    if (!["faculty_officer", "admin"].includes(actingRole)) {
       throw new Error("Không có quyền duyệt vòng 1.");
     }
 
-    if (actingRole === "class_officer") {
+    if (actingRole === "faculty_officer") {
       const assignment = (await db.first(`
           SELECT id
-          FROM class_members
-          WHERE user_id = ?
+          FROM faculty_class_assignments
+          WHERE faculty_officer_id = ?
             AND class_id = ?
-            AND left_at IS NULL
           LIMIT 1
           `, [user.id, submission.class_id]));
 
@@ -136,14 +136,15 @@ export async function reviewSubmission(
   (await evaluateSubmissionAuto(submission.id));
   const requirements = (await evaluateSubmissionRequirements(db, submission.id, "approved"));
 
-  if (decision === "approve") {
+  const isApprove = decision === "approve" || decision === "approve_final";
+  if (isApprove) {
     (await assertSubmissionCanBeApproved(db, submission.id));
   } else if (requirements.valid) {
     throw new Error("Hồ sơ đã đáp ứng đầy đủ điều kiện. Vui lòng duyệt hoàn tất hồ sơ.");
   }
 
-  const reviewRound=submission.status==="submitted_v1"?1:2;
-  if (decision !== "approve") {
+  const reviewRound = submission.status === "submitted_v1" ? 1 : 2;
+  if (!isApprove) {
     const pendingCriteria = (await db.first<{ total: number }>(`
       SELECT COUNT(*) AS total
       FROM event_criteria_items i
@@ -155,26 +156,46 @@ export async function reviewSubmission(
         )
         AND NOT EXISTS(
           SELECT 1 FROM submission_criteria_reviews cr
-          WHERE cr.submission_id=? AND cr.criteria_code=i.code AND cr.round=? AND cr.decision IN ('pass','fail')
+          WHERE cr.submission_id=? AND cr.criteria_code=i.code AND cr.round<=? AND cr.decision IN ('pass','fail')
         )
       `, [submission.event_id, submission.id, submission.id, submission.id, submission.id, reviewRound]))?.total ?? 0;
     if (Number(pendingCriteria) > 0) {
       throw new Error(`Còn ${pendingCriteria} tiêu chí có minh chứng chưa được đánh giá. Vui lòng chọn Đạt hoặc Chưa đạt trước khi trả hoặc đóng hồ sơ.`);
     }
   }
-  const redundantEvidence=decision==="approve"?(await db.rows(`
+  const redundantEvidence = decision === "approve" ? (await db.rows(`
     SELECT i.code
     FROM submissions s INNER JOIN event_criteria_items i ON i.event_id=s.event_id
     WHERE s.id=? AND NOT EXISTS(SELECT 1 FROM submission_auto_results ar WHERE ar.submission_id=s.id AND ar.criteria_code=i.code AND ar.passed=1)
-      AND COALESCE((SELECT cr.decision FROM submission_criteria_reviews cr WHERE cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=?),'fail')<>'pass'
-  `, [submission.id, reviewRound])) as Array<{code:string}>:[];
+      AND COALESCE((SELECT cr.decision FROM submission_criteria_reviews cr WHERE cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round<=? ORDER BY cr.round DESC LIMIT 1),'fail')<>'pass'
+  `, [submission.id, reviewRound])) as Array<{ code: string }> : [];
   const discardedFiles: EvidenceObject[] = [];
 
   const tx = (async () => (await db.withTransaction(async () => {
-    for(const item of redundantEvidence){
-      discardedFiles.push(...await db.rows<EvidenceObject>("SELECT object_key,storage_provider FROM submission_ready_files WHERE submission_id=? AND criteria_code=? AND status='ready'", [submission.id,item.code]));
-      await db.execute("UPDATE submission_files SET status='deleted',deleted_at=CURRENT_TIMESTAMP(3) WHERE submission_id=? AND criteria_code=? AND status='ready'", [submission.id,item.code]);
-      (await db.execute(`DELETE FROM submission_items WHERE submission_id=? AND criteria_code=?`, [submission.id, item.code]));
+    for (const item of redundantEvidence) {
+      const discardedUnits = await db.rows<{ id: number }>(
+        `SELECT eu.id
+         FROM submission_evidence_units eu
+         WHERE eu.submission_id = ? AND eu.criteria_code = ?
+           AND COALESCE((SELECT er.decision FROM submission_evidence_reviews er WHERE er.evidence_unit_id = eu.id AND er.round <= ? ORDER BY er.round DESC LIMIT 1), 'fail') <> 'pass'`,
+        [submission.id, item.code, reviewRound],
+      );
+      if (discardedUnits.length > 0) {
+        const unitIds = discardedUnits.map(u => u.id);
+        const unitPlaceholders = unitIds.map(() => "?").join(",");
+        discardedFiles.push(...await db.rows<EvidenceObject>(`SELECT object_key,storage_provider FROM submission_files WHERE submission_id=? AND criteria_code=? AND evidence_unit_id IN (${unitPlaceholders}) AND status='ready' AND deleted_at IS NULL`, [submission.id, item.code, ...unitIds]));
+        await db.execute(`UPDATE submission_files SET status='deleted',deleted_at=CURRENT_TIMESTAMP(3) WHERE submission_id=? AND criteria_code=? AND evidence_unit_id IN (${unitPlaceholders}) AND status='ready'`, [submission.id, item.code, ...unitIds]);
+        await db.execute(`DELETE FROM submission_evidence_units WHERE submission_id=? AND criteria_code=? AND id IN (${unitPlaceholders})`, [submission.id, item.code, ...unitIds]);
+      }
+      discardedFiles.push(...await db.rows<EvidenceObject>("SELECT object_key,storage_provider FROM submission_files WHERE submission_id=? AND criteria_code=? AND evidence_unit_id IS NULL AND status='ready' AND deleted_at IS NULL", [submission.id, item.code]));
+      await db.execute("UPDATE submission_files SET status='deleted',deleted_at=CURRENT_TIMESTAMP(3) WHERE submission_id=? AND criteria_code=? AND evidence_unit_id IS NULL AND status='ready'", [submission.id, item.code]);
+      const remainingUnits = await db.rows<{ note: string | null }>("SELECT note FROM submission_evidence_units WHERE submission_id=? AND criteria_code=? ORDER BY id ASC", [submission.id, item.code]);
+      if (remainingUnits.length === 0) {
+        await db.execute(`DELETE FROM submission_items WHERE submission_id=? AND criteria_code=?`, [submission.id, item.code]);
+      } else {
+        const combinedNote = remainingUnits.map(u => String(u.note ?? "").trim()).filter(Boolean).join("\n");
+        await db.execute(`UPDATE submission_items SET content_text=?, updated_at=CURRENT_TIMESTAMP(3) WHERE submission_id=? AND criteria_code=?`, [combinedNote, submission.id, item.code]);
+      }
     }
     if (actingRole === "faculty_officer") {
       const assignment = (await db.first(`SELECT id FROM faculty_class_assignments WHERE faculty_officer_id=? AND class_id=? LIMIT 1`, [user.id, submission.class_id]));
@@ -219,7 +240,7 @@ export async function reviewSubmission(
       VALUES (?, ?, 'review', ?, ?, ?, CURRENT_TIMESTAMP(3))
       `, [submission.id, user.id, submission.status, nextStatus, note || null]));
 
-    const notificationTitle = decision === "approve"
+    const notificationTitle = isApprove
       ? nextStatus === "passed" ? "Hồ sơ đã được duyệt đạt" : "Hồ sơ đã qua vòng duyệt"
       : decision === "revision" ? "Hồ sơ cần được điều chỉnh" : "Hồ sơ không đạt";
     (await db.execute(`INSERT INTO notifications(user_id,type,title,content,link) VALUES(?,?,?,?,?)`, [submission.user_id, "submission_review", notificationTitle, note || (decision === "revision" ? "Vui lòng xem phản hồi và bổ sung hồ sơ." : "Kết quả xét duyệt hồ sơ đã được cập nhật."), `/dashboard/student/submissions/${submission.id}`]));

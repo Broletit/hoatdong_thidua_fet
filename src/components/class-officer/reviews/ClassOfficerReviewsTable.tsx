@@ -1,5 +1,4 @@
 import NumberedTable from "@/components/common/NumberedTable";
-import Link from "next/link";
 import { formatDateTimeVN } from "@/lib/utils/formatDateTimeVN";
 import ReviewFilters from "@/components/shared/reviews/ReviewFilters";
 import ReviewPagination from "@/components/shared/reviews/ReviewPagination";
@@ -49,26 +48,23 @@ export default function ClassOfficerReviewsTable({
         <NumberedTable page={page} className="w-full min-w-0 table-fixed divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
-              <th className="w-[24%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
+              <th className="w-[27%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
                 Đợt xét
               </th>
-              <th className="w-[19%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
+              <th className="w-[22%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
                 Sinh viên
               </th>
-              <th data-column-align="left" className="w-[10%] px-4 py-3  text-sm font-semibold text-slate-700 text-left">
+              <th data-column-align="left" className="w-[11%] px-4 py-3  text-sm font-semibold text-slate-700 text-left">
                 Lớp
               </th>
-              <th className="w-[11%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
+              <th className="w-[12%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
                 Vòng xét duyệt
               </th>
-              <th className="w-[14%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
+              <th className="w-[15%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
                 Trạng thái
               </th>
-              <th className="w-[12%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
+              <th className="w-[13%] px-4 py-3 text-left text-sm font-semibold text-slate-700">
                 Cập nhật
-              </th>
-              <th className="w-[10%] px-4 py-3 text-center text-sm font-semibold text-slate-700">
-                Thao tác
               </th>
             </tr>
           </thead>
@@ -107,35 +103,12 @@ export default function ClassOfficerReviewsTable({
                   <td className="px-4 py-4 align-top text-sm text-slate-700">
                     {item.submittedAt ? formatDateTimeVN(item.submittedAt) : "-"}
                   </td>
-
-                  <td className="px-4 py-4 text-center align-top">
-                    <div className="flex justify-center gap-2">
-                      <Link
-                        href={`/dashboard/class-officer/reviews/${item.id}?mode=view${searchParams.termId ? `&termId=${encodeURIComponent(searchParams.termId)}` : ""}`}
-                        className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        Xem
-                      </Link>
-                      {item.status === "submitted_v1" ? (
-                        <Link
-                          href={`/dashboard/class-officer/reviews/${item.id}?mode=review${searchParams.termId ? `&termId=${encodeURIComponent(searchParams.termId)}` : ""}`}
-                          className="inline-flex items-center rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
-                        >
-                          Duyệt
-                        </Link>
-                      ) : (
-                        <button type="button" disabled className="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-300 opacity-40">
-                          Duyệt
-                        </button>
-                      )}
-                    </div>
-                  </td>
                 </tr>
               ))
             ) : (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={6}
                   className="px-4 py-10 text-center text-sm text-slate-500"
                 >
                   Không có hồ sơ phù hợp.

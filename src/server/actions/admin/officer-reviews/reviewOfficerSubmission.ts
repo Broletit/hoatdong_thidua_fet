@@ -27,7 +27,7 @@ export async function reviewOfficerSubmission(
 
   const submission = (await db.first(`
       SELECT s.id, s.status, s.user_id, e.type, u.role AS owner_role,
-        CASE WHEN e.status='published' AND CAST(e.end_at AS DATETIME(3))>=CURRENT_TIMESTAMP(3) THEN 1 ELSE 0 END review_open
+        CASE WHEN e.status IN ('published','closed') AND CAST(e.end_at AS DATETIME(3))>=CURRENT_TIMESTAMP(3) THEN 1 ELSE 0 END review_open
       FROM submissions s
       INNER JOIN events e ON e.id = s.event_id
       INNER JOIN users u ON u.id = s.user_id

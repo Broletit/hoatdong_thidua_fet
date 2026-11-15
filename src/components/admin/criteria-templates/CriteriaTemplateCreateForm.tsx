@@ -2,9 +2,8 @@
 import RequiredMark from "@/components/common/RequiredMark";
 
 
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createCriteriaTemplate } from "@/server/actions/criteria-templates/createCriteriaTemplate";
 import ActionFeedback from "@/components/shared/ActionFeedback";
 
@@ -42,7 +41,15 @@ async function action(_prev: State, formData: FormData): Promise<State> {
 }
 
 export default function CriteriaTemplateCreateForm() {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(action, initialState);
+
+  useEffect(() => {
+    if (state.ok && state.templateId) {
+      router.push("/dashboard/admin/criteria-templates");
+      router.refresh();
+    }
+  }, [router, state.ok, state.templateId]);
 
   return (
     <>
@@ -104,20 +111,6 @@ export default function CriteriaTemplateCreateForm() {
           {pending ? "Đang tạo..." : "Tạo bộ tiêu chuẩn"}
         </button>
       </div>
-
-      {state.ok && state.templateId ? (
-        <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60">
-          <div>
-              <Link
-                href={`/dashboard/admin/criteria-templates/${state.templateId}/configure`}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-800"
-              >
-                Đi tới cấu hình tiêu chuẩn / tiêu chí
-                <ArrowRight size={16} />
-              </Link>
-          </div>
-        </section>
-      ) : null}
     </form>
     </>
   );

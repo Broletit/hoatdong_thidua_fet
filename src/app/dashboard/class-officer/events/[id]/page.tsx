@@ -60,7 +60,7 @@ export default async function ClassOfficerEventDetailPage({
       FROM events
       WHERE id = ?
         AND type = 'student'
-        AND status = 'published'
+        AND status IN ('published', 'closed')
         AND (NOT EXISTS (SELECT 1 FROM event_scopes es WHERE es.event_id=events.id)
           OR EXISTS (SELECT 1 FROM event_scopes es WHERE es.event_id=events.id AND es.class_id=?))
       LIMIT 1
@@ -120,11 +120,10 @@ export default async function ClassOfficerEventDetailPage({
 <PaginatedTable className="min-w-full table-fixed divide-y divide-slate-200" containerClassName="overflow-hidden rounded-none border border-slate-200" resultLabel="bản ghi">
             <thead className="bg-slate-50">
               <tr>
-                <th className="w-[30%] px-4 py-3 text-left text-sm font-semibold text-slate-700">Sinh viên</th>
-                <th className="w-[18%] px-4 py-3 text-left text-sm font-semibold text-slate-700">MSSV</th>
-                <th className="w-[20%] px-4 py-3 text-left text-sm font-semibold text-slate-700">Trạng thái</th>
-                <th className="w-[22%] px-4 py-3 text-left text-sm font-semibold text-slate-700">Cập nhật</th>
-                <th className="w-[10%] px-4 py-3 text-center text-sm font-semibold text-slate-700">Xem</th>
+                <th className="w-[34%] px-4 py-3 text-left text-sm font-semibold text-slate-700">Sinh viên</th>
+                <th className="w-[20%] px-4 py-3 text-left text-sm font-semibold text-slate-700">MSSV</th>
+                <th className="w-[22%] px-4 py-3 text-left text-sm font-semibold text-slate-700">Trạng thái</th>
+                <th className="w-[24%] px-4 py-3 text-left text-sm font-semibold text-slate-700">Cập nhật</th>
               </tr>
             </thead>
 
@@ -140,19 +139,11 @@ export default async function ClassOfficerEventDetailPage({
                     <td className="px-4 py-4 text-sm text-slate-700">
                       {formatDateTimeVN(item.updated_at)}
                     </td>
-                    <td className="px-4 py-4 text-center">
-                      <Link
-                        href={`/dashboard/class-officer/reviews/${item.id}${sp.termId ? `?termId=${encodeURIComponent(sp.termId)}` : ""}`}
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Xem
-                      </Link>
-                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-500">
                     Chưa có hồ sơ nào từ lớp.
                   </td>
                 </tr>

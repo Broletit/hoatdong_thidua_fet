@@ -11,7 +11,10 @@ export const detailApiPattern = new RegExp(
 
 function matchRoute(path: string) {
   const page = path.match(detailPagePattern);
-  if (page) return {prefix:page[1], id:page[4], suffix:page[5] ?? "", section:page[3]};
+  if (page) {
+    if (page[2] === "class-officer" && (page[3] === "reviews" || page[3] === "submissions")) return null;
+    return {prefix:page[1], id:page[4], suffix:page[5] ?? "", section:page[3]};
+  }
   const api = path.match(detailApiPattern);
   if (api) return {prefix:api[1], id:api[4], suffix:api[5] ?? "", section:api[1].includes("/submissions/files/") ? "files" : api[1].includes("/activities/") ? "activities" : "submissions"};
   return null;

@@ -1,4 +1,5 @@
 import PaginatedTable from "@/components/common/PaginatedTable";
+import ExpandableText from "@/components/common/ExpandableText";
 import Link from "next/link";
 import { formatDateTimeVN } from "@/lib/utils/formatDateTimeVN";
 import StudentActivitiesFilter from "./StudentActivitiesFilters";
@@ -78,8 +79,8 @@ export default function StudentActivitiesTable({
                     <div className="text-sm font-semibold text-slate-900">
                       {item.title}
                     </div>
-                    <div className="mt-1 line-clamp-2 text-xs text-slate-500">
-                      {item.description}
+                    <div className="mt-1 text-xs text-slate-500">
+                      <ExpandableText text={item.description || "Chưa có mô tả"} maxChars={140} />
                     </div>
                     <div className="mt-2 text-xs text-slate-500">
                       Đăng ký: {formatDateTimeVN(item.registrationStartAt)} →{" "}

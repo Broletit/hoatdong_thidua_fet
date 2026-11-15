@@ -1,4 +1,8 @@
-import { canSubmitToEvent, type EventSubmissionState } from "@/lib/events/eventSubmissionPhase";
+import {
+  canContinueEventSubmission,
+  canSubmitToEvent,
+  type EventSubmissionState,
+} from "@/lib/events/eventSubmissionPhase";
 
 export function getSubmissionStatusLabel(status: string) {
   switch (status) {
@@ -28,11 +32,18 @@ export function getSubmissionStatusLabel(status: string) {
 }
 
 export function canEditSubmission(status: string, event?: EventSubmissionState) {
-  return [
-    "draft",
-    "needs_revision_v1",
-    "needs_revision_v2",
-    "rejected_v1",
-    "rejected_v2",
-  ].includes(status) && (!event || canSubmitToEvent(event));
+  if (status === "draft") {
+    return !event || canSubmitToEvent(event);
+  }
+  if (
+    [
+      "needs_revision_v1",
+      "needs_revision_v2",
+      "rejected_v1",
+      "rejected_v2",
+    ].includes(status)
+  ) {
+    return !event || canContinueEventSubmission(event);
+  }
+  return false;
 }

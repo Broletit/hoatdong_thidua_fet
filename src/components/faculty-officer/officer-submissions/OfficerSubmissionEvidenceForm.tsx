@@ -10,6 +10,14 @@ import ActionFeedback from "@/components/shared/ActionFeedback";
 import { AutoCriteriaBadge, AutoCriteriaMessage } from "@/components/shared/criteria/AutoCriteriaAchievement";
 import { getUserFacingActionError } from "@/lib/errors/getUserFacingActionError";
 
+type EvidenceUnitItem = {
+  id: number;
+  note: string | null;
+  fileId?: number | null;
+  fileName: string | null;
+  reviewDecision?: string | null;
+};
+
 type Item = {
   code: string;
   title: string;
@@ -17,7 +25,9 @@ type Item = {
   group_code: string;
   group_title: string;
   min_required: number;
+  required_count?: number;
   score_max: number;
+  evidence_type?: string;
   is_required: number;
   auto_passed: number | null;
   auto_message: string | null;
@@ -28,6 +38,7 @@ type Item = {
   auto_score: number;
   matched_activity_titles: string | null;
   review_decision: string | null;
+  evidence_units?: EvidenceUnitItem[];
 };
 
 const allowedFileExtensions = [".pdf", ".png"];
@@ -49,6 +60,24 @@ export default function OfficerSubmissionEvidenceForm({
   const [message, setMessage] = useState("");
   const [ok, setOk] = useState(false);
   const [fileStates, setFileStates] = useState<FileState>({});
+  const [noteStates, setNoteStates] = useState<Record<string, string>>({});
+  const [missingEvidence, setMissingEvidence] = useState<string[]>([]);
+  const [flashingTarget, setFlashingTarget] = useState<string | null>(null);
+
+  const focusAndFlashCriterion = (code: string) => {
+    setFlashingTarget(code);
+    setTimeout(() => {
+      const element = document.getElementById(`officer-criterion-${code}`);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusable = element?.querySelector<HTMLElement>(
+        '[data-failed-slot="true"] textarea:not(:disabled), [data-failed-slot="true"] input:not(:disabled), textarea:not(:disabled), input:not(:disabled)'
+      );
+      focusable?.focus({ preventScroll: true });
+    }, 80);
+    setTimeout(() => {
+      setFlashingTarget(current => (current === code ? null : current));
+    }, 4500);
+  };
 
   const groups = Array.from(
     new Map(
@@ -60,10 +89,10 @@ export default function OfficerSubmissionEvidenceForm({
   );
   const evidenceNotNeeded=(item:Item)=>Number(item.is_required)!==1&&items.filter(candidate=>candidate.group_code===item.group_code&&Number(candidate.auto_passed)===1).length>=Math.max(Number(item.min_required),items.filter(candidate=>candidate.group_code===item.group_code&&Number(candidate.is_required)===1).length);
 
-  function handleFileChange(criteriaCode: string, event: ChangeEvent<HTMLInputElement>) {
+  function handleFileChange(fieldKey: string, event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     if (!file) {
-      setFileStates((current) => ({ ...current, [criteriaCode]: { name: "", error: "" } }));
+      setFileStates((current) => ({ ...current, [fieldKey]: { name: "", error: "" } }));
       return;
     }
 
@@ -79,13 +108,13 @@ export default function OfficerSubmissionEvidenceForm({
 
     if (error) {
       event.currentTarget.value = "";
-      setFileStates((current) => ({ ...current, [criteriaCode]: { name: file.name, error } }));
-      toast.error(error, { id: `officer-evidence-file-${criteriaCode}` });
+      setFileStates((current) => ({ ...current, [fieldKey]: { name: file.name, error } }));
+      toast.error(error, { id: `officer-evidence-file-${fieldKey}` });
       return;
     }
 
-    setFileStates((current) => ({ ...current, [criteriaCode]: { name: file.name, error: "" } }));
-    toast.success(`Tệp “${file.name}” hợp lệ và sẵn sàng tải lên.`, { id: `officer-evidence-file-${criteriaCode}` });
+    setFileStates((current) => ({ ...current, [fieldKey]: { name: file.name, error: "" } }));
+    toast.success(`Tệp “${file.name}” hợp lệ và sẵn sàng tải lên.`, { id: `officer-evidence-file-${fieldKey}` });
   }
 
   function handleSave(formData: FormData) {
@@ -100,6 +129,8 @@ export default function OfficerSubmissionEvidenceForm({
         setOk(true);
         setMessage(result.message || "Đã lưu minh chứng.");
         setFileStates({});
+        setNoteStates({});
+        setMissingEvidence([]);
         router.refresh();
       } catch (error) {
         setOk(false);
@@ -110,15 +141,34 @@ export default function OfficerSubmissionEvidenceForm({
 
   function handleSubmit() {
     setMessage("");
+    const failedCriteria = items.filter(
+      item =>
+        item.review_decision === "fail" ||
+        (item.evidence_units?.some(u => u.reviewDecision === "fail") ?? false)
+    );
+    if (failedCriteria.length > 0) {
+      const failedCodes = failedCriteria.map(item => item.code);
+      setMissingEvidence(failedCodes);
+      const msg = `Bạn cần cập nhật và nhấn “Lưu minh chứng” cho các minh chứng chưa đạt (${failedCodes.join(", ")}) trước khi hoàn tất hồ sơ.`;
+      setOk(false);
+      setMessage(msg);
+      toast.error(msg, { id: `officer-submit-failed-${submissionId}` });
+      focusAndFlashCriterion(failedCodes[0]);
+      return;
+    }
+
     startTransition(async () => {
       try {
         const result = await submitOfficerSubmission(submissionId);
         setOk(true);
         setMessage(result.message || "Đã hoàn tất hồ sơ.");
+        setMissingEvidence([]);
         router.refresh();
       } catch (error) {
+        const errMsg = error instanceof Error ? error.message : "Không thể hoàn tất hồ sơ.";
         setOk(false);
-        setMessage(error instanceof Error ? error.message : "Không thể hoàn tất hồ sơ.");
+        setMessage(errMsg);
+        toast.error(errMsg, { id: `officer-submit-err-${submissionId}` });
       }
     });
   }
@@ -142,27 +192,81 @@ export default function OfficerSubmissionEvidenceForm({
 
           return (
             <div key={group.code} className="overflow-hidden rounded-none border border-slate-200">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-l-4 border-blue-700 bg-blue-50 px-5 py-4">
-                <h3 className="text-base font-semibold text-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-l-4 border-blue-700 bg-blue-50 px-5 py-3.5">
+                <h3 className="text-base font-semibold text-blue-950">
                   {group.code}. {group.title}
                 </h3>
-                <div className="flex flex-wrap items-center gap-3"><span className="text-xs font-semibold text-blue-700">Yêu cầu: Đạt tối thiểu {Math.max(group.minRequired,groupItems.filter(item=>Number(item.is_required)===1).length)}/{groupItems.length} tiêu chí</span><span className="text-sm font-bold text-emerald-700">
-                  Đã đạt {groupItems.reduce((total, item) => {
-                    const passed = Number(item.auto_passed ?? 0) === 1 || Boolean(item.content_text?.trim()) || Number(item.file_count) > 0;
-                    const awarded = Number(item.auto_passed ?? 0) === 1
-                      ? Math.min(Number(item.score_max), Number(item.auto_score) || Number(item.score_max))
-                      : Number(item.score_max);
-                    return total + (passed ? awarded : 0);
-                  }, 0)}/{groupItems.reduce((total, item) => total + Number(item.score_max), 0)} điểm
-                </span></div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <span className="text-sm font-semibold text-blue-900">Yêu cầu: Đạt tối thiểu {Math.max(group.minRequired,groupItems.filter(item=>Number(item.is_required)===1).length)}/{groupItems.length} tiêu chí</span>
+                  {(() => {
+                    const maxScore = groupItems.reduce((total, item) => total + Number(item.score_max), 0);
+                    const submittedScore = groupItems.reduce((total, item) => {
+                      const hasEvidence = Number(item.auto_passed ?? 0) === 1 || (item.review_decision !== "fail" && (Boolean(item.content_text?.trim()) || Number(item.file_count) > 0));
+                      const awarded = Number(item.auto_passed ?? 0) === 1
+                        ? Math.min(Number(item.score_max), Number(item.auto_score) || Number(item.score_max))
+                        : Number(item.score_max);
+                      return total + (hasEvidence ? awarded : 0);
+                    }, 0);
+                    const approvedScore = groupItems.reduce((total, item) => {
+                      const passed = Number(item.auto_passed ?? 0) === 1 || item.review_decision === "pass";
+                      const awarded = Number(item.auto_passed ?? 0) === 1
+                        ? Math.min(Number(item.score_max), Number(item.auto_score) || Number(item.score_max))
+                        : Number(item.score_max);
+                      return total + (passed ? awarded : 0);
+                    }, 0);
+                    return (
+                      <>
+                        <span className="text-sm font-bold text-blue-700">Đã nộp {submittedScore}/{maxScore} điểm</span>
+                        {approvedScore > 0 ? <span className="text-sm font-bold text-emerald-700">Đã đạt {approvedScore}/{maxScore} điểm</span> : null}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
 
               <div className="divide-y divide-slate-100">
                 {groupItems.map((item) => {
                   const autoPassed = Number(item.auto_passed ?? 0) === 1;
-                  const hasEvidence = Boolean(item.content_text?.trim()) || Number(item.file_count) > 0;
+                  const isDescriptionOnly = item.evidence_type === "manual";
+                  const isLockedPass = autoPassed || item.review_decision === "pass";
+                  const isDisabled = !canEdit || pending || isLockedPass || evidenceNotNeeded(item);
+                  const reqCount = Math.max(1, Number(item.required_count ?? 1));
+                  let uploadedCount = 0;
+                  let failedUnresolvedCount = 0;
+                  for (let s = 0; s < reqCount; s++) {
+                    const u = item.evidence_units?.[s];
+                    const fk = `${item.code}_${s}`;
+                    const hasNewValid = Boolean(fileStates[fk]?.name && !fileStates[fk]?.error);
+                    const existFile = u?.fileName ?? (s === 0 && !item.evidence_units?.length ? item.file_name : null);
+                    const unitFail = u?.reviewDecision === "fail" || (!item.evidence_units?.length && item.review_decision === "fail");
+                    const nState = noteStates[fk];
+                    const origN = (u?.note ?? (s === 0 && !item.evidence_units?.length ? item.content_text : "") ?? "").trim();
+                    const noteEdited = nState !== undefined && nState.trim() !== origN;
+                    if (hasNewValid || existFile) uploadedCount++;
+                    if (unitFail && !hasNewValid && !noteEdited) failedUnresolvedCount++;
+                  }
+                  const currentManualNote = (noteStates[item.code] ?? item.content_text ?? "").trim();
+                  const isManualEdited = noteStates[item.code] !== undefined && currentManualNote !== (item.content_text ?? "").trim();
+                  const isManualFailedUnresolved = isDescriptionOnly && item.review_decision === "fail" && !isManualEdited;
+                  const isManualSatisfied = isDescriptionOnly && Boolean(currentManualNote) && !isManualFailedUnresolved;
+                  const hasEvidence = isDescriptionOnly
+                    ? isManualSatisfied
+                    : uploadedCount >= reqCount && failedUnresolvedCount === 0;
+                  const isFlashing = flashingTarget === item.code;
+                  const isItemFailed = isDescriptionOnly ? isManualFailedUnresolved : failedUnresolvedCount > 0;
+                  const isItemMissingUnresolved = missingEvidence.includes(item.code) && !hasEvidence;
                   return (
-                    <div key={item.code} className="p-5">
+                    <div
+                      key={item.code}
+                      id={`officer-criterion-${item.code}`}
+                      className={`scroll-mt-24 p-5 transition-all duration-300 ${
+                        isFlashing
+                          ? "bg-red-50/25"
+                          : isItemFailed || isItemMissingUnresolved
+                            ? "bg-red-50/10"
+                            : ""
+                      }`}
+                    >
                       <input type="hidden" name="criteriaCode" value={item.code} />
 
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -174,31 +278,50 @@ export default function OfficerSubmissionEvidenceForm({
                           <div className="mt-1 text-sm text-slate-500">
                             {item.description || "Chưa có mô tả"}
                           </div>
-
+                          {!autoPassed && (item.auto_message || item.matched_activity_titles) ? (
+                            <AutoCriteriaMessage
+                              message={item.auto_message}
+                              matchedActivityTitles={item.matched_activity_titles}
+                            />
+                          ) : null}
                         </div>
 
                           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-xs font-medium">
-                            <span className={Number(item.is_required) === 1 ? "rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700" : "rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600"}>
+                            <span className={Number(item.is_required) === 1 ? "inline-flex items-center whitespace-nowrap rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700 ring-1 ring-rose-200" : "inline-flex items-center whitespace-nowrap rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600 ring-1 ring-slate-200"}>
                               {Number(item.is_required) === 1 ? "Bắt buộc" : "Không bắt buộc"}
                             </span>
-                            <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700">
+                            <span className="inline-flex items-center whitespace-nowrap rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700 ring-1 ring-blue-200">
                               Tối đa {Number(item.score_max ?? 0)} điểm
                             </span>
                             {autoPassed ? (
                               <AutoCriteriaBadge/>
                             ) : item.review_decision === "pass" ? (
-                              <span className="rounded bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">Đạt</span>
-                            ) : item.review_decision === "fail" ? (
-                              <span className="rounded bg-rose-50 px-3 py-1 font-semibold text-rose-700">Chưa đạt</span>
+                              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">Đã đạt</span>
+                            ) : isItemFailed ? (
+                              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700 ring-1 ring-rose-200">Chưa đạt</span>
                             ) : evidenceNotNeeded(item) ? (
-                              <span className="rounded bg-slate-100 px-3 py-1 font-semibold text-slate-600">Không cần bổ sung</span>
+                              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600 ring-1 ring-slate-200">Không cần bổ sung</span>
+                            ) : isDescriptionOnly ? (
+                              isManualSatisfied ? (
+                                <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                                  Đã nhập mô tả
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700 ring-1 ring-amber-200">
+                                  Cần nhập mô tả
+                                </span>
+                              )
                             ) : hasEvidence ? (
-                              <span className="rounded bg-blue-50 px-3 py-1 font-semibold text-blue-700">
-                                Đã nộp minh chứng
+                              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                                {reqCount > 1 ? `Đã nộp đủ ${uploadedCount}/${reqCount} minh chứng` : "Đã nộp minh chứng"}
+                              </span>
+                            ) : uploadedCount > 0 ? (
+                              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700 ring-1 ring-amber-200">
+                                Đã nộp {uploadedCount}/{reqCount} minh chứng
                               </span>
                             ) : (
-                              <span className="rounded bg-amber-50 px-3 py-1 font-semibold text-amber-700">
-                                Cần minh chứng
+                              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700 ring-1 ring-amber-200">
+                                {reqCount > 1 ? `Cần ${reqCount} minh chứng` : "Cần minh chứng"}
                               </span>
                             )}
                           </div>
@@ -209,50 +332,109 @@ export default function OfficerSubmissionEvidenceForm({
                           message={item.auto_message || "Điểm rèn luyện đã được ghi nhận"}
                           matchedActivityTitles={item.matched_activity_titles}
                         />
-                      ) : (
-                        <div className="mt-4 space-y-3">
+                      ) : isDescriptionOnly ? (
+                        <div className="mt-4">
                           <textarea
                             name={`note_${item.code}`}
-                            disabled={!canEdit || pending || evidenceNotNeeded(item)}
+                            disabled={isDisabled}
+                            readOnly={item.review_decision === "pass"}
                             defaultValue={item.content_text ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setNoteStates((prev) => ({ ...prev, [item.code]: val }));
+                              if (val.trim()) {
+                                setMissingEvidence((prev) => prev.filter((c) => c !== item.code));
+                              }
+                            }}
                             rows={3}
-                            placeholder="Nhập mô tả minh chứng..."
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
+                            placeholder="Nhập nội dung mô tả..."
+                            className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-blue-500 disabled:bg-slate-50 ${
+                              isManualFailedUnresolved || (missingEvidence.includes(item.code) && !currentManualNote)
+                                ? `bg-red-50/30 ${isFlashing ? "border-red-600" : "border-red-500"}`
+                                : isManualSatisfied
+                                  ? "border-emerald-500 bg-emerald-50/20"
+                                  : "border-slate-200"
+                            }`}
                           />
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-3">
+                          {Array.from({ length: reqCount }).map((_, slot) => {
+                            const unit = item.evidence_units?.[slot];
+                            const fieldKey = `${item.code}_${slot}`;
+                            const existingFileName = unit?.fileName ?? (slot === 0 && !item.evidence_units?.length ? item.file_name : null);
+                            const existingNote = unit?.note ?? (slot === 0 && !item.evidence_units?.length ? item.content_text : "");
+                            const isSlotLockedPass = item.review_decision === "pass" || unit?.reviewDecision === "pass";
+                            const isSlotFailed = !isSlotLockedPass && (unit?.reviewDecision === "fail" || (!item.evidence_units?.length && item.review_decision === "fail"));
+                            const isSlotMissing = !isSlotLockedPass && missingEvidence.includes(item.code) && (!existingFileName || isSlotFailed);
+                            const isSlotHighlighted = isSlotFailed || isSlotMissing || Boolean(fileStates[fieldKey]?.error);
+                            const isSlotDisabled = isDisabled || isSlotLockedPass;
+                            return (
+                              <div
+                                key={fieldKey}
+                                data-failed-slot={isSlotHighlighted ? "true" : undefined}
+                                className="space-y-1.5 transition-all duration-300"
+                              >
+                                {reqCount > 1 || isSlotFailed ? (
+                                  <div className="flex items-center justify-between text-xs font-medium text-slate-600">
+                                    <span>{reqCount > 1 ? `Minh chứng ${slot + 1}/{reqCount}` : "Minh chứng"}</span>
+                                    {isSlotLockedPass ? (
+                                      <span className="rounded bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">Đã đạt</span>
+                                    ) : isSlotFailed ? (
+                                      <span className="rounded bg-rose-100 px-2.5 py-0.5 font-semibold text-rose-700 ring-1 ring-rose-300">Chưa đạt - Cần cập nhật lại</span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                                <input type="hidden" name={`unitId_${fieldKey}`} value={unit?.id ? String(unit.id) : ""} />
+                                <div className="grid gap-3 lg:grid-cols-10">
+                                  <textarea
+                                    name={`note_${fieldKey}`}
+                                    disabled={isSlotDisabled}
+                                    readOnly={isSlotLockedPass}
+                                    defaultValue={existingNote ?? ""}
+                                    rows={2}
+                                    placeholder={reqCount > 1 ? `Nhập mô tả minh chứng ${slot + 1}...` : "Nhập mô tả minh chứng..."}
+                                    className={`h-20 min-h-20 max-h-20 w-full resize-y overflow-y-auto rounded-none border px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50 lg:col-span-5 ${
+                                      isSlotHighlighted
+                                        ? `bg-white ${isFlashing ? "border-red-600" : "border-red-500"}`
+                                        : "border-slate-200"
+                                    }`}
+                                  />
 
-                          <label className="block max-w-xs text-sm font-medium text-slate-700">
-                            Số lượt minh chứng trong nội dung đã nộp
-                            <input type="number" name={`claimedCount_${item.code}`} min={1} max={50} defaultValue={1} disabled={!canEdit || pending || evidenceNotNeeded(item)} className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50" />
-                          </label>
+                                  <div className={`rounded-none border p-3 transition-colors duration-200 lg:col-span-5 ${fileStates[fieldKey]?.error || isSlotHighlighted ? `bg-red-50/40 ${isFlashing ? "border-red-600" : "border-red-500"}` : fileStates[fieldKey]?.name ? "border-emerald-500 bg-emerald-50" : existingFileName ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-slate-50"}`}>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                    <label className={`flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold ${!isSlotDisabled ? (isSlotHighlighted ? "cursor-pointer bg-red-600 text-white hover:bg-red-700" : "cursor-pointer bg-blue-700 text-white") : "cursor-not-allowed bg-slate-200 text-slate-400"}`}>
+                                      <Upload size={14} />
+                                      {isSlotFailed ? "Tải lại tệp" : "Tải tệp"}
+                                      <input
+                                        type="file"
+                                        name={`file_${fieldKey}`}
+                                        accept=".pdf,.png,application/pdf,image/png"
+                                        disabled={isSlotDisabled}
+                                        className="hidden"
+                                        aria-invalid={isSlotHighlighted}
+                                        onChange={(event) => handleFileChange(fieldKey, event)}
+                                      />
+                                    </label>
 
-                          <div className={`rounded-none border p-3 ${fileStates[item.code]?.error ? "border-red-500 bg-red-50" : fileStates[item.code]?.name ? "border-emerald-500 bg-emerald-50" : item.file_name ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-slate-50"}`}>
-                            <div className="flex flex-wrap items-center gap-3">
-                            <label className={`flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold ${canEdit ? "bg-blue-700 text-white" : "bg-slate-200 text-slate-400"}`}>
-                              <Upload size={14} />
-                              Tải tệp
-                              <input
-                                type="file"
-                                name={`file_${item.code}`}
-                                accept=".pdf,.png,application/pdf,image/png"
-                                disabled={!canEdit || pending || evidenceNotNeeded(item)}
-                                className="hidden"
-                                aria-invalid={Boolean(fileStates[item.code]?.error)}
-                                onChange={(event) => handleFileChange(item.code, event)}
-                              />
-                            </label>
-
-                            <div className="min-w-0 flex-1 text-xs text-slate-600">
-                              <span className="truncate">
-                                {fileStates[item.code]?.name || item.file_name || "Chưa có tệp được chọn"}
-                              </span>
-                            </div>
-                            </div>
-                            {fileStates[item.code]?.error ? (
-                              <p className="mt-2 text-xs font-medium text-red-700">{fileStates[item.code].error}</p>
-                            ) : (
-                              <p className="mt-2 text-xs text-slate-500">Chỉ nhận PDF hoặc PNG; dung lượng tối đa 10 MB.</p>
-                            )}
-                          </div>
+                                    <div className="min-w-0 flex-1 text-xs text-slate-600">
+                                      <span className="truncate">
+                                        {fileStates[fieldKey]?.name || existingFileName || "Chưa có tệp được chọn"}
+                                      </span>
+                                    </div>
+                                    </div>
+                                    {fileStates[fieldKey]?.error ? (
+                                      <p className="mt-2 text-xs font-medium text-red-700">{fileStates[fieldKey].error}</p>
+                                    ) : isSlotFailed && !fileStates[fieldKey]?.name ? (
+                                      <p className="mt-2 text-xs font-semibold text-red-700">Minh chứng này được đánh giá Chưa đạt. Vui lòng tải tệp mới hoặc chỉnh sửa rồi nhấn “Lưu minh chứng”.</p>
+                                    ) : (
+                                      <p className="mt-2 text-xs text-slate-500">Chỉ nhận PDF hoặc PNG; dung lượng tối đa 10 MB.</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

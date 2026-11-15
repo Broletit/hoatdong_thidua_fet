@@ -5,8 +5,8 @@ export async function restoreDeadlineFinalizedSubmissions(db:Database,eventId:nu
   const rows=(await db.rows(`SELECT s.id,t.from_status FROM submissions s
     JOIN events e ON e.id=s.event_id
     JOIN submission_timeline t ON t.id=(SELECT MAX(latest.id) FROM submission_timeline latest WHERE latest.submission_id=s.id AND latest.to_status IS NOT NULL)
-    WHERE s.event_id=? AND s.status='failed' AND e.status='published' AND CAST(e.end_at AS DATETIME(3))>CURRENT_TIMESTAMP(3)
-      AND t.action='finalize' AND t.message LIKE 'Đã hết hạn nhận hồ sơ%'
+    WHERE s.event_id=? AND s.status='failed' AND e.status IN ('published','closed') AND CAST(e.end_at AS DATETIME(3))>CURRENT_TIMESTAMP(3)
+      AND t.action='finalize' AND (t.message LIKE 'Đã hết hạn nhận hồ sơ%' OR t.message LIKE 'Đợt xét đã đóng%')
       AND t.from_status IN ('draft','submitted_v1','submitted_v2','needs_revision_v1','needs_revision_v2','rejected_v1','rejected_v2')`, [eventId])) as Array<{id:number;from_status:string}>;
   
   

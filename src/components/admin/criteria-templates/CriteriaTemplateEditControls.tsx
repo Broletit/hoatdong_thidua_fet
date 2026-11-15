@@ -49,7 +49,7 @@ export default function CriteriaTemplateEditControls({templateId,events,draftSta
       catch(error){toast.error(error instanceof Error?error.message:"Chưa thể hoàn tất cập nhật. Hãy thử lại.");router.refresh();}
     });
   }
-  return <>{modal}
+  return <div className="contents">{modal}
     {!draftStatus?<button type="button" onClick={start} disabled={pending}
       className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-800 transition hover:bg-blue-50 disabled:opacity-60">
       <Pencil size={16}/>{pending?"Đang mở...":"Chỉnh sửa"}
@@ -57,5 +57,5 @@ export default function CriteriaTemplateEditControls({templateId,events,draftSta
       className="inline-flex min-h-10 items-center justify-center rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
       {pending?`Đang xử lý${processed?` ${processed} bản ghi`:""}...`:draftStatus==="processing"?"Tiếp tục cập nhật":"Lưu thay đổi"}
     </button>}
-  </>;
+  </div>;
 }

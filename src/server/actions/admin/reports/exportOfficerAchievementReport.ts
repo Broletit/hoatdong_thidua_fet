@@ -3,12 +3,9 @@
 import { addCohortFilter } from "@/server/cohorts/sql";
 import { requireAdminContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
+import { buildStyledExcelBuffer } from "@/lib/exports/buildStyledExcel";
 
-function csvEscape(value: unknown) {
-  const text = String(value ?? "");
-  return `"${text.replaceAll(`"`, `""`)}"`;
-}
-
+/** Xuất báo cáo danh sách cán bộ tiêu biểu / bảng xếp hạng hồ sơ cán bộ ra file Excel (.xlsx). */
 export async function exportOfficerAchievementReport(formData: FormData) {
   await requireAdminContext();
 
@@ -56,40 +53,42 @@ export async function exportOfficerAchievementReport(formData: FormData) {
       ORDER BY s.score_total DESC, u.full_name ASC
       `, [...values])) as Array<Record<string, unknown>>;
 
-  const header = [
-    "Hạng",
-    "Họ tên",
-    "MSSV",
-    "Lớp",
-    "Đợt xét",
-    "Trạng thái",
-    "Điểm",
-    "Ngày nộp",
-  ];
+  const title =
+    exportType === "passed"
+      ? "DANH SÁCH CÁN BỘ ĐOÀN TIÊU BIỂU"
+      : "BẢNG XẾP HẠNG HỒ SƠ CÁN BỘ";
 
-  const csv = [
-    header.map(csvEscape).join(";"),
-    ...rows.map((item, index) =>
-      [
-        index + 1,
-        item.full_name,
-        item.mssv,
-        item.class_codes,
-        item.event_title,
-        item.status,
-        item.score_total,
-        item.submitted_at,
-      ]
-        .map(csvEscape)
-        .join(";")
-    ),
-  ].join("\n");
+  const buffer = await buildStyledExcelBuffer({
+    sheetName: exportType === "passed" ? "Cán bộ tiêu biểu" : "Xếp hạng cán bộ",
+    title,
+    subtitle: `Tổng số: ${rows.length} cán bộ • Xuất lúc: ${new Date().toLocaleString("vi-VN")}`,
+    columns: [
+      { header: "Hạng", width: 8, align: "center" },
+      { header: "Họ và tên", width: 26, align: "left" },
+      { header: "MSSV", width: 15, align: "center" },
+      { header: "Lớp", width: 18, align: "center" },
+      { header: "Đợt xét", width: 28, align: "left" },
+      { header: "Trạng thái", width: 18, align: "center" },
+      { header: "Điểm", width: 10, align: "center" },
+      { header: "Ngày nộp", width: 22, align: "center" },
+    ],
+    rows: rows.map((item, index) => [
+      index + 1,
+      String(item.full_name ?? ""),
+      String(item.mssv ?? ""),
+      String(item.class_codes ?? ""),
+      String(item.event_title ?? ""),
+      String(item.status ?? ""),
+      item.score_total != null ? Number(item.score_total) : "",
+      item.submitted_at ? new Date(String(item.submitted_at)).toLocaleString("vi-VN") : "",
+    ]),
+  });
 
   return {
     fileName:
       exportType === "passed"
-        ? "can-bo-doan-tieu-bieu.csv"
-        : "bang-xep-hang-ho-so-can-bo.csv",
-    content: `\uFEFF${csv}`,
+        ? "can-bo-doan-tieu-bieu.xlsx"
+        : "bang-xep-hang-ho-so-can-bo.xlsx",
+    base64: buffer.toString("base64"),
   };
 }

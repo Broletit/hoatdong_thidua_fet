@@ -126,7 +126,7 @@ export function getSidebarGroups(role: string): SidebarGroup[] {
         items: [
           { href: "/dashboard/class-officer/activities", label: "Hoạt động", icon: CalendarCheck2 },
           { href: "/dashboard/class-officer/events", label: "Đợt xét", icon: Trophy },
-          { href: "/dashboard/class-officer/reviews", label: "Duyệt hồ sơ", icon: ClipboardList },
+          { href: "/dashboard/class-officer/reviews", label: "Theo dõi hồ sơ", icon: ClipboardList },
 
         ],
       },

@@ -66,6 +66,7 @@ export default function StudentEventsFilter() {
         <option value="">Tất cả trạng thái tiếp nhận</option>
         <option value="not_open">Chưa mở nhận hồ sơ</option>
         <option value="accepting">Đang nhận hồ sơ</option>
+        <option value="closed">Đã đóng</option>
         <option value="expired">Đã hết hạn</option>
       </select>
     </FilterRow>

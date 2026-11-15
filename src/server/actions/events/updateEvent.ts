@@ -77,7 +77,7 @@ export async function updateEvent(eventId: number, formData: FormData) {
   const requestedStartAt = toIsoOrNull(formData.get("startAt"),event.start_at);
   const requestedEndAt = toIsoOrNull(formData.get("endAt"),event.end_at);
   const type = isInUse ? event.type : requestedType;
-  const status = isInUse ? event.status : requestedStatus;
+  const status = requestedStatus;
   const allowLate = 0; // Legacy database column; closing time is authoritative.
   const templateId = isInUse
     ? Number(event.criteria_template_id ?? 0)
@@ -96,6 +96,10 @@ export async function updateEvent(eventId: number, formData: FormData) {
 
   if (!["draft", "published", "closed"].includes(status)) {
     throw new Error("Trạng thái đợt xét không hợp lệ.");
+  }
+
+  if (status === "draft" && Number(event.submissions ?? 0) > 0) {
+    throw new Error("Đợt xét đã có hồ sơ nộp, không thể đưa về nháp.");
   }
 
   if (!Number.isFinite(templateId) || templateId <= 0) {
@@ -156,7 +160,7 @@ export async function updateEvent(eventId: number, formData: FormData) {
     }
   }
 
-  if (status === "published" && !isInUse) (await assertTemplateReady(db, templateId));
+  if (status === "published" && Number(event.submissions ?? 0) === 0) (await assertTemplateReady(db, templateId));
 
   (await (async () => (await db.withTransaction(async ()=>{
   (await db.execute(`
@@ -182,7 +186,7 @@ export async function updateEvent(eventId: number, formData: FormData) {
     WHERE id = ?
     `, [title, description || null, type, status, startAt, endAt, allowLate, status, status, templateId, scoreMax, eventId]));
 
-  if(status==="published" && end>oldEnd && end>now)(await restoreDeadlineFinalizedSubmissions(db,eventId,admin.id));
+  if((status==="published" || status==="closed") && end>oldEnd && end>now)(await restoreDeadlineFinalizedSubmissions(db,eventId,admin.id));
   })))());
 
   revalidatePath("/dashboard/admin/events");

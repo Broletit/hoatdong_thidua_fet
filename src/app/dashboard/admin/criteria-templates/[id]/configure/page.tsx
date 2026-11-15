@@ -256,7 +256,7 @@ isRequired: Number(item.is_required ?? 0) === 1,
             <CriteriaTemplateConfigureClient
               templateId={configurationId} templateForType={template.forType}
               groups={groups} criteria={criteria} activities={activities}
-              saveControl={<CriteriaTemplateEditControls templateId={template.id} events={affectedEvents} draftStatus="editing"/>}
+              saveControl={<CriteriaTemplateEditControls key="edit-controls" templateId={template.id} events={affectedEvents} draftStatus="editing"/>}
             />
           </> : <>
             <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50 px-5 py-4 shadow-md ring-1 ring-amber-200 shadow-slate-200/60">

@@ -1,4 +1,5 @@
 import type { SubmissionTimelineItem } from "@/components/shared/reviews/ReviewHistory";
+import { getSessionUser } from "@/server/auth/getSessionUser";
 import { getDatabase } from "@/server/db/mysql";
 
 type Row = {
@@ -12,6 +13,14 @@ type Row = {
 };
 
 export async function getSubmissionTimeline(submissionId: number): Promise<SubmissionTimelineItem[]> {
+  const user = await getSessionUser();
+  const context = user?.loginContext ?? user?.role ?? "student";
+  const assignedRoles = new Set(user?.roles?.length ? user.roles : user?.role ? [user.role] : []);
+  const canViewReviewerIdentity =
+    Boolean(user) &&
+    (context === "admin" || context === "faculty_officer") &&
+    assignedRoles.has(context);
+
   const rows = (await getDatabase().rows(`
     SELECT
       timeline.id,
@@ -33,7 +42,7 @@ export async function getSubmissionTimeline(submissionId: number): Promise<Submi
     fromStatus: item.from_status ? String(item.from_status) : null,
     toStatus: item.to_status ? String(item.to_status) : null,
     message: item.message ? String(item.message) : null,
-    actorName: item.actor_name ? String(item.actor_name) : null,
+    actorName: canViewReviewerIdentity && item.actor_name ? String(item.actor_name) : null,
     createdAt: String(item.created_at ?? ""),
   }));
 }

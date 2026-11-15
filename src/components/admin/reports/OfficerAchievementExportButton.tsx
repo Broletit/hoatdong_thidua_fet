@@ -2,6 +2,7 @@
 
 import { ChevronDown, Download } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { downloadBase64Excel } from "@/lib/exports/downloadBase64Excel";
 import { exportOfficerAchievementReport } from "@/server/actions/admin/reports/exportOfficerAchievementReport";
 
 export default function OfficerAchievementExportButton({
@@ -30,22 +31,7 @@ export default function OfficerAchievementExportButton({
       if(cohort) formData.set("cohort",cohort);
 
       const result = await exportOfficerAchievementReport(formData);
-
-      const blob = new Blob([result.content], {
-        type: "text/csv;charset=utf-8",
-      });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-
-      a.href = url;
-      a.download = result.fileName;
-
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      URL.revokeObjectURL(url);
+      downloadBase64Excel(result.fileName, result.base64);
       } catch {}
     });
   }

@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { canEditSubmission } from "@/lib/submissions/submissionStatus";
 import { requireStudentContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
-import { assertEventAcceptsSubmissions } from "@/lib/events/eventSubmissionPhase";
+import {
+  assertEventAcceptsSubmissions,
+  assertEventAllowsRevision,
+} from "@/lib/events/eventSubmissionPhase";
 
 type SubmissionRow = {
   id: number;
@@ -30,9 +33,14 @@ export async function requestSubmissionSupport(
      LIMIT 1`, [submissionId, user.id])) as SubmissionRow | undefined;
 
   if (!submission) throw new Error("Không tìm thấy hồ sơ.");
-  assertEventAcceptsSubmissions({status:submission.event_status,startAt:submission.start_at,endAt:submission.end_at,allowLate:Number(submission.allow_late)===1});
   if (!canEditSubmission(submission.status)) {
     throw new Error("Hồ sơ hiện không thể gửi yêu cầu hỗ trợ.");
+  }
+  const eventState = {status:submission.event_status,startAt:submission.start_at,endAt:submission.end_at,allowLate:Number(submission.allow_late)===1};
+  if (submission.status === "draft") {
+    assertEventAcceptsSubmissions(eventState);
+  } else {
+    assertEventAllowsRevision(eventState);
   }
 
   (await db.execute(`INSERT INTO submission_support_requests (submission_id, user_id, note, status)

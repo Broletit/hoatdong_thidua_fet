@@ -140,31 +140,31 @@ export default function CriteriaTemplateStructureTable({
                 className="min-w-0 scroll-mt-4 space-y-3"
               >
                 <div className={isEditingGroup ? "border-l-4 border-amber-500 bg-amber-50 px-4 py-3" : "border-l-4 border-blue-700 bg-blue-50 px-4 py-3"}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-base font-semibold text-slate-900">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="break-words text-base font-semibold text-slate-900">
                         {group.code}. {group.title}
                       </div>
-                      <div className="mt-1 text-sm text-slate-500">
+                      <div className="mt-1 break-words text-sm text-slate-500">
                         {group.description || "Chưa có mô tả"}
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:flex-nowrap">
+                      <span className="whitespace-nowrap rounded-full bg-blue-50 px-3.5 py-1.5 text-sm font-semibold text-blue-900 ring-1 ring-blue-200">
                         Yêu cầu: Đạt tối thiểu {Math.max(group.minRequired,groupCriteria.filter(item=>item.isRequired).length)}/{groupCriteria.length} tiêu chí
                       </span>
                       {isOfficer ? (
-                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">
+                        <span className="whitespace-nowrap rounded-full bg-amber-50 px-3.5 py-1.5 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
                           Tối đa {group.scoreMax} điểm
                         </span>
                       ) : null}
 
-                      <button type="button" aria-expanded={addingGroupCode === group.code && !groupEditingItem} onClick={() => { setEditingItem(null); setAddingGroupCode(group.code); }} className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50">Thêm tiêu chí</button>
+                      <button type="button" aria-expanded={addingGroupCode === group.code && !groupEditingItem} onClick={() => { setEditingItem(null); setAddingGroupCode(group.code); }} className="whitespace-nowrap rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50">Thêm tiêu chí</button>
                       <button
                         type="button"
                         onClick={() => onEditGroup?.(group)}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        className="whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >
                         Sửa
                       </button>
@@ -172,7 +172,7 @@ export default function CriteriaTemplateStructureTable({
                       <button
                         type="button"
                         onClick={() => handleDeleteGroup(group)}
-                        className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                        className="whitespace-nowrap rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
                       >
                         Xóa
                       </button>
@@ -273,11 +273,13 @@ export default function CriteriaTemplateStructureTable({
                               ) : null}
 
                               <td className="px-4 py-4 align-top text-xs text-slate-600">
-                                {item.activityRules.length > 0
-                                  ? item.activityRules
-                                      .map((rule) => rule.activityTitle)
-                                      .join(", ")
-                                  : "Không có, cần nộp minh chứng"}
+                                {item.evidenceType === "manual"
+                                  ? "Chỉ nhập mô tả"
+                                  : item.activityRules.length > 0
+                                    ? item.activityRules
+                                        .map((rule) => rule.activityTitle)
+                                        .join(", ")
+                                    : "Không có, cần nộp minh chứng"}
                               </td>
 
                               <td className="px-4 py-4 text-center align-top">

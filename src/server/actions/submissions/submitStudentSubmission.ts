@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireStudentContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
-import { assertEventAcceptsSubmissions } from "@/lib/events/eventSubmissionPhase";
+import {
+  assertEventAcceptsSubmissions,
+  assertEventAllowsRevision,
+} from "@/lib/events/eventSubmissionPhase";
 import { evaluateSubmissionAuto } from "@/server/events/evaluateSubmissionAuto";
 import { evaluateSubmissionRequirements } from "@/server/submissions/evaluateSubmissionRequirements";
 
@@ -19,8 +22,13 @@ export async function submitStudentSubmission(submissionId:number){
     WHERE s.id=? AND s.user_id=? AND e.type='student' LIMIT 1
   `, [submissionId, user.id])) as SubmissionRow|undefined;
   if(!submission) throw new Error("Không tìm thấy hồ sơ.");
-  assertEventAcceptsSubmissions({status:submission.event_status,startAt:submission.event_start_at,endAt:submission.event_end_at,allowLate:Number(submission.event_allow_late)===1});
   if(!["draft","needs_revision_v1","needs_revision_v2","rejected_v1","rejected_v2"].includes(submission.status)) throw new Error("Hồ sơ hiện không thể nộp.");
+  const eventState = {status:submission.event_status,startAt:submission.event_start_at,endAt:submission.event_end_at,allowLate:Number(submission.event_allow_late)===1};
+  if (submission.status === "draft") {
+    assertEventAcceptsSubmissions(eventState);
+  } else {
+    assertEventAllowsRevision(eventState);
+  }
 
   (await evaluateSubmissionAuto(submissionId));
   const requirements = (await evaluateSubmissionRequirements(db, submissionId));

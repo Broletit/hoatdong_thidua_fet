@@ -5,6 +5,7 @@ import type { ObjectMetadata, StorageProvider, StoredObject } from "./types";
 type OneDriveConfig = { tenantId:string; clientId:string; clientSecret:string; driveId:string; root:string };
 type GraphItem = { id:string; size:number; eTag?:string; file?:{ mimeType?:string } };
 
+/** Đọc và kiểm tra cấu hình kết nối Microsoft Graph OneDrive từ biến môi trường. */
 export function getOneDriveConfig():OneDriveConfig {
   const tenantId=process.env.MICROSOFT_TENANT_ID?.trim()||"";
   const clientId=process.env.MICROSOFT_CLIENT_ID?.trim()||"";

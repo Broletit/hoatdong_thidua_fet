@@ -12,7 +12,11 @@ import {
   Trophy,
 } from "lucide-react";
 import { getSubmissionStatusLabel } from "@/lib/submissions/submissionStatus";
-import { getRequiredActiveTerm } from "@/server/academic-terms/getRequiredActiveTerm";
+import AcademicTermSelect from "@/components/shared/AcademicTermSelect";
+import {
+  getAcademicTermForView,
+  getAcademicTermsForSelect,
+} from "@/server/academic-terms/getAcademicTermForView";
 import { requireStudentContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
 
@@ -79,18 +83,35 @@ function getActivityBadge(item: UpcomingActivity) {
 
 function getEventBadge(item: UpcomingEvent) {
   if (item.submission_status) {
-    return {
-      label: getSubmissionStatusLabel(item.submission_status),
-      className: "bg-blue-100 text-blue-700",
-    };
+    const label = getSubmissionStatusLabel(item.submission_status);
+    if (item.submission_status === "passed" || item.submission_status === "approved") {
+      return { label, className: "bg-emerald-100 text-emerald-700" };
+    }
+    if (item.submission_status === "failed" || item.submission_status === "rejected") {
+      return { label, className: "bg-red-100 text-red-700" };
+    }
+    if (["needs_revision_v1", "needs_revision_v2", "rejected_v1", "rejected_v2"].includes(item.submission_status)) {
+      return { label, className: "bg-rose-100 text-rose-700" };
+    }
+    if (item.submission_status === "submitted_v1" || item.submission_status === "support") {
+      return { label, className: "bg-amber-100 text-amber-800" };
+    }
+    if (item.submission_status === "closed" || item.submission_status === "draft") {
+      return { label, className: "bg-slate-100 text-slate-700" };
+    }
+    return { label, className: "bg-blue-100 text-blue-700" };
   }
   return { label: "Chưa tạo hồ sơ", className: "bg-amber-100 text-amber-800" };
 }
 
-export default async function StudentDashboardPage() {
+type SearchParams = Promise<{ termId?: string }>;
+
+export default async function StudentDashboardPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireStudentContext();
+  const params = await searchParams;
   const db = getDatabase();
-  const term = (await getRequiredActiveTerm());
+  const terms = await getAcademicTermsForSelect();
+  const term = await getAcademicTermForView(params.termId);
 
   const visibilitySql = activityVisibleSql("a", String(user.id));
 
@@ -188,6 +209,15 @@ export default async function StudentDashboardPage() {
 
   return (
     <main className="space-y-6">
+      <section className="rounded-2xl bg-linear-to-r from-blue-900 to-blue-800 p-3 text-white shadow-[0_14px_36px_rgba(30,64,175,0.24)] shadow-slate-200/60 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold">Dashboard Sinh viên</h1>
+          </div>
+          <AcademicTermSelect variant="header" terms={terms} selectedTermId={term.id} />
+        </div>
+      </section>
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat icon={<CalendarCheck2 size={20} />} label="Hoạt động đã đăng ký" value={summary.registered} />
         <Stat icon={<CheckCircle2 size={20} />} label="Tỷ lệ đã điểm danh" value={`${attendedRate}%`} />
@@ -264,7 +294,7 @@ export default async function StudentDashboardPage() {
               <div className="line-clamp-2 min-h-10 text-sm font-semibold text-slate-900 group-hover:text-blue-800">
                 {item.event_title}
               </div>
-              <div className="mt-3 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+              <div className="mt-3">
                 <SubmissionStatusBadge status={item.status} />
               </div>
               <div className="mt-3 text-xs text-slate-400">Cập nhật {compactDate(item.updated_at)}</div>

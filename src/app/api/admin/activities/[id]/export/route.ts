@@ -1,48 +1,98 @@
-import * as XLSX from "xlsx";
+import { NextResponse } from "next/server";
 import { requireAdminContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
-import { ensureActivityConductScores } from "@/server/conduct/ensureActivityConductScores";
+import { buildStyledExcelBuffer } from "@/lib/exports/buildStyledExcel";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+type ActivityExportRow = {
+  mssv: string | null;
+  full_name: string;
+  email: string;
+  class_code: string | null;
+  attendance_status: string | null;
+  attendance_method: string | null;
+  checked_in_at: string | null;
+  score: number | null;
+};
+
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   await requireAdminContext();
-  const { id } = await params;
-  const activityId = Number(id);
-  if (!Number.isFinite(activityId)) return new Response("Hoạt động không hợp lệ.", { status: 400 });
+  const { id } = await context.params;
   const db = getDatabase();
-  (await ensureActivityConductScores());
-  const activity = (await db.first(`SELECT title FROM activities WHERE id=?`, [activityId])) as { title: string } | undefined;
-  if (!activity) return new Response("Không tìm thấy hoạt động.", { status: 404 });
-  const registrationCount = (await db.first(`
-    SELECT COUNT(*) AS total
-    FROM activity_registrations
-    WHERE activity_id = ? AND status != 'cancelled'
-  `, [activityId])) as { total: number };
-  if (Number(registrationCount.total ?? 0) === 0) {
-    return new Response("Hoạt động chưa có người đăng ký nên không thể xuất danh sách.", { status: 409 });
+  const activityId = await db.resolveRouteRecordId(id);
+
+  if (!Number.isFinite(activityId) || activityId <= 0) {
+    return NextResponse.json({ error: "Invalid activity id" }, { status: 400 });
   }
-  const rows = (await db.rows(`
-    SELECT u.full_name, u.mssv, ar.status
+
+  const activity = (await db.first(
+    `SELECT id, title FROM activities WHERE id = ? LIMIT 1`,
+    [activityId],
+  )) as { id: number; title: string } | undefined;
+
+  if (!activity) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
+
+  const rows = (await db.rows(
+    `
+    SELECT
+      u.mssv,
+      u.full_name,
+      u.email,
+      c.code AS class_code,
+      ar.attendance_status,
+      ar.attendance_method,
+      ar.checked_in_at,
+      ar.score
     FROM activity_registrations ar
-    JOIN activities a ON a.id=ar.activity_id
-    JOIN users u ON u.id=ar.user_id
-    LEFT JOIN classes c ON c.id=ar.class_id
-    WHERE ar.activity_id=? AND ar.status != 'cancelled'
-    ORDER BY c.code,u.full_name,u.mssv
-  `, [activityId])) as {full_name:string;mssv:string;status:string}[];
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([
-    [`Danh sách Đánh giá sinh viên tham gia hoạt động\n${activity.title}`],
-    ["STT", "Họ tên", "MSSV", "Xem chỉ số đánh giá trong Phần mềm", "Ghi chú"],
-    ...rows.map((row, index) => [index + 1, row.full_name, row.mssv,
-      row.status === 'attended' ? 1 : row.status === 'absent' ? 0 : '',
-      row.status === 'attended' ? 'Tham gia (+100%)' : row.status === 'absent' ? 'Không tham gia (-100%)' : 'Chưa xác định',
+    INNER JOIN users u ON u.id = ar.user_id
+    LEFT JOIN class_members cm ON cm.user_id = u.id AND cm.left_at IS NULL
+    LEFT JOIN classes c ON c.id = cm.class_id
+    WHERE ar.activity_id = ?
+    ORDER BY u.mssv ASC, u.full_name ASC
+    `,
+    [activityId],
+  )) as ActivityExportRow[];
+
+  const buffer = await buildStyledExcelBuffer({
+    sheetName: "Điểm danh",
+    title: `DANH SÁCH THAM GIA HOẠT ĐỘNG: ${activity.title.toUpperCase()}`,
+    subtitle: `Tổng số sinh viên: ${rows.length} • Xuất lúc: ${new Date().toLocaleString("vi-VN")}`,
+    columns: [
+      { header: "STT", width: 8, align: "center" },
+      { header: "MSSV", width: 15, align: "center" },
+      { header: "Họ và tên", width: 26, align: "left" },
+      { header: "Email", width: 28, align: "left" },
+      { header: "Lớp", width: 14, align: "center" },
+      { header: "Trạng thái điểm danh", width: 22, align: "center" },
+      { header: "Hình thức", width: 16, align: "center" },
+      { header: "Thời gian điểm danh", width: 22, align: "center" },
+      { header: "Điểm", width: 10, align: "center" },
+    ],
+    rows: rows.map((row, index) => [
+      index + 1,
+      row.mssv ?? "",
+      row.full_name,
+      row.email,
+      row.class_code ?? "",
+      row.attendance_status === "present" ? "Đã điểm danh" : row.attendance_status ?? "Chưa điểm danh",
+      row.attendance_method ?? "",
+      row.checked_in_at ? new Date(row.checked_in_at).toLocaleString("vi-VN") : "",
+      row.score ?? "",
     ]),
-  ]);
-  worksheet["!merges"] = [{s:{r:0,c:0},e:{r:0,c:4}}];
-  worksheet["!cols"] = [{wch:6},{wch:28},{wch:14},{wch:38},{wch:28}];
-  worksheet["!rows"] = [{hpt:60},{hpt:30}];
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Đánh giá tham gia");
-  const activitySlug = activity.title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `hoat-dong-${activityId}`;
-  const output = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-  return new Response(output, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="DS_Danh_gia_${activitySlug}.xlsx"` } });
+  });
+
+  const safeFile = `activity_${activityId}_attendance.xlsx`;
+
+  return new NextResponse(new Uint8Array(buffer), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${safeFile}"`,
+      "Cache-Control": "no-store",
+    },
+  });
 }

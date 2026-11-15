@@ -6,12 +6,14 @@ import { scrollToTable } from "@/lib/ui/scrollToTable";
 
 const GROUPS_PER_PAGE = 3;
 
-export default function CriteriaGroupsPagination({ children, className = "", totalGroups, preserveChildren = false }: { children: ReactNode; className?: string; totalGroups: number; preserveChildren?: boolean }) {
+export default function CriteriaGroupsPagination({ children, className = "", totalGroups, preserveChildren = false, externalPage }: { children: ReactNode; className?: string; totalGroups: number; preserveChildren?: boolean; externalPage?: { page: number; token: number } | null }) {
   const groups = Children.toArray(children);
-  const [requestedPage, setPage] = useState(1);
+  const [manualState, setManualState] = useState<{ page: number; token: number }>({ page: 1, token: -1 });
   const container = useRef<HTMLDivElement>(null);
   const previousPage = useRef(1);
   const totalPages = Math.max(1, Math.ceil(totalGroups / GROUPS_PER_PAGE));
+  const useExternal = Boolean(externalPage && externalPage.token > manualState.token && externalPage.page >= 1 && externalPage.page <= totalPages);
+  const requestedPage = useExternal ? externalPage!.page : manualState.page;
   const page = Math.min(requestedPage, totalPages);
   useLayoutEffect(() => {
     if (page === previousPage.current) return;
@@ -20,7 +22,7 @@ export default function CriteriaGroupsPagination({ children, className = "", tot
   }, [page]);
   const start = (page - 1) * GROUPS_PER_PAGE;
   function changePage(next: number) {
-    setPage(next);
+    setManualState({ page: next, token: externalPage?.token ?? manualState.token });
   }
   const arrow = (direction: "left" | "right") => <button type="button"
     aria-label={direction === "left" ? "Trang trước" : "Trang sau"}

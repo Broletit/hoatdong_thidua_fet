@@ -116,7 +116,7 @@ export default function FormUxGuard() {
         clearFieldError(field);
         field.setAttribute("aria-invalid", "false");
         delete field.dataset.validationErrorSource;
-        delete field.dataset.validationValid;
+        field.dataset.validationValid = "true";
       }
     }
 

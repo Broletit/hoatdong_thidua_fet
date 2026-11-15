@@ -27,8 +27,9 @@ export default function StudentQrCard({ fullName, mssv, payload }: {
 
     void refreshPayload();
     const refreshTimer = window.setInterval(() => void refreshPayload(), 45_000);
+    const dialogEl = dialogRef.current;
     preserveDialogScroll(() => {
-      if (!dialogRef.current?.open) dialogRef.current?.showModal();
+      if (!dialogEl?.open) dialogEl?.showModal();
     });
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -36,7 +37,7 @@ export default function StudentQrCard({ fullName, mssv, payload }: {
     window.addEventListener("keydown", closeOnEscape);
 
     return () => {
-      preserveDialogScroll(() => dialogRef.current?.close());
+      preserveDialogScroll(() => dialogEl?.close());
       window.removeEventListener("keydown", closeOnEscape);
       window.clearInterval(refreshTimer);
     };

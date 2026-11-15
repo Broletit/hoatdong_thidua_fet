@@ -51,7 +51,7 @@ export async function OfficerEventsPageView({
   const page = Math.max(1, Number(params.page ?? "1") || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const where: string[] = ["e.type = 'officer'", "e.status = 'published'", "e.term_id = ?"];
+  const where: string[] = ["e.type = 'officer'", "e.status IN ('published', 'closed')", "e.term_id = ?"];
   const values: unknown[] = [selectedTerm.id];
 
   if (keyword) {

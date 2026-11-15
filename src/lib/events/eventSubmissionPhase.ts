@@ -37,6 +37,27 @@ export function canSubmitToEvent(event: EventSubmissionState, now = new Date()) 
   return phase === "accepting";
 }
 
+export function canContinueEventSubmission(event: EventSubmissionState, now = new Date()) {
+  if (event.status !== "published" && event.status !== "closed") return false;
+  const start = new Date(event.startAt);
+  const end = new Date(event.endAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  return now >= start && now <= end;
+}
+
+export function assertEventAllowsRevision(event: EventSubmissionState, now = new Date()) {
+  if (event.status !== "published" && event.status !== "closed") {
+    throw new Error("Đợt xét chưa được công khai.");
+  }
+  const start = new Date(event.startAt);
+  const end = new Date(event.endAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error("Đợt xét chưa được công khai.");
+  }
+  if (now < start) throw new Error("Đợt xét chưa đến thời gian nhận hồ sơ.");
+  if (now > end) throw new Error("Đợt xét đã hết hạn nhận hồ sơ.");
+}
+
 export function getEventSubmissionPhaseLabel(phase: EventSubmissionPhase) {
   switch (phase) {
     case "not_published":

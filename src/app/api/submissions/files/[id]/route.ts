@@ -3,10 +3,10 @@ import { getDatabase } from "@/server/db/mysql";
 import { getSessionUser } from "@/server/auth/getSessionUser";
 import { canReadSubmissionFile } from "@/server/auth/canReadSubmissionFile";
 import { getStorageProvider } from "@/server/storage/storageFactory";
-import { authorizeEvidenceWrite, removeEvidenceObjects, refreshEvidenceEvaluation } from "@/server/storage/evidenceService";
+import { authorizeEvidenceWrite, getLockedPassedCriteriaCodes, getLockedPassedUnitIds, removeEvidenceObjects, refreshEvidenceEvaluation } from "@/server/storage/evidenceService";
 import type { StorageKind } from "@/server/storage/types";
 
-type FileRow = {id:number; submission_id:number; criteria_code:string; original_name:string; object_key:string; storage_provider:StorageKind; mime_type:string; size_bytes:number; user_id:number; class_id:number|null; submitted_at:string|null; has_support:number};
+type FileRow = {id:number; submission_id:number; criteria_code:string; evidence_unit_id:number|null; original_name:string; object_key:string; storage_provider:StorageKind; mime_type:string; size_bytes:number; user_id:number; class_id:number|null; submitted_at:string|null; has_support:number};
 async function findFile(id: string) {
   const numeric = Number(id);
   if (!Number.isSafeInteger(numeric) || numeric <= 0) return undefined;
@@ -42,6 +42,11 @@ export async function DELETE(_: Request, context: {params:Promise<{id:string}>})
   try {
     await getDatabase().withTransaction(async () => {
       await authorizeEvidenceWrite(user, file.submission_id, [file.criteria_code]);
+      const locked = await getLockedPassedCriteriaCodes(getDatabase(), file.submission_id);
+      const lockedUnits = await getLockedPassedUnitIds(getDatabase(), file.submission_id);
+      if (locked.has(file.criteria_code) || (file.evidence_unit_id && lockedUnits.has(Number(file.evidence_unit_id)))) {
+        throw new Error("Minh chứng đã được duyệt đạt, không thể xóa minh chứng.");
+      }
       await getDatabase().execute("UPDATE submission_files SET status='deleted',deleted_at=CURRENT_TIMESTAMP(3) WHERE id=?", [file.id]);
       await refreshEvidenceEvaluation(file.submission_id);
     });

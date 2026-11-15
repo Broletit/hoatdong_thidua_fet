@@ -68,6 +68,7 @@ export default function ReviewHistory({
   emptyMessage,
   resultsOnly = false,
   singleStage = false,
+  hideActor = false,
 }: {
   items: ReviewItem[];
   timeline?: SubmissionTimelineItem[];
@@ -75,8 +76,10 @@ export default function ReviewHistory({
   emptyMessage?: string;
   resultsOnly?: boolean;
   singleStage?: boolean;
+  hideActor?: boolean;
 }) {
   if (items.length === 0 && timeline.length === 0 && !emptyMessage) return null;
+  const omitActor = singleStage || hideActor || resultsOnly;
 
   const timestamp = (value?: string | null) => {
     const parsed = value ? Date.parse(value) : NaN;
@@ -110,20 +113,20 @@ export default function ReviewHistory({
       <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
       {rows.length ? (
         <PaginatedTable containerClassName="mt-5" resultLabel="bản ghi" showResultCount={!singleStage} paginate={!singleStage}
-          style={{ width: singleStage ? "56rem" : "68rem", minWidth: singleStage ? "56rem" : "68rem", tableLayout: "auto" }}
+          style={{ width: omitActor ? "56rem" : "68rem", minWidth: omitActor ? "56rem" : "68rem", tableLayout: "auto" }}
           className="review-history-table [&_tr::before]:px-1! [&_th]:whitespace-nowrap! [&_td]:whitespace-normal! [&_td_div]:whitespace-normal! [&_td]:[overflow-wrap:anywhere]">
-          <colgroup><col style={{width:"5%"}}/><col style={{width:singleStage?"35%":"28%"}}/><col style={{width:singleStage?"22%":"19%"}}/>{!singleStage ? <col style={{width:"21%"}}/> : null}<col style={{width:singleStage?"38%":"27%"}}/></colgroup>
+          <colgroup><col style={{width:"5%"}}/><col style={{width:omitActor?"35%":"28%"}}/><col style={{width:omitActor?"22%":"19%"}}/>{!omitActor ? <col style={{width:"21%"}}/> : null}<col style={{width:omitActor?"38%":"27%"}}/></colgroup>
           <thead className="bg-blue-800 text-white"><tr>
             <th data-column-align="left" className="px-2 py-3 text-sm">Giai đoạn</th>
             <th className="px-2 py-3 text-sm">Thời gian</th>
-            {!singleStage ? <th className="px-2 py-3 text-sm">Người thực hiện</th> : null}
+            {!omitActor ? <th className="px-2 py-3 text-sm">Người thực hiện</th> : null}
             <th data-column-align="left" className="px-2 py-3 text-sm">Nội dung phản hồi</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(row => <tr key={row.key} className="even:bg-slate-50/60 hover:bg-blue-50/50">
               <td data-column-align="left" className="px-2 py-3 text-sm font-medium text-slate-900">{row.title}</td>
               <td className="px-2 py-3 text-sm text-slate-700">{row.time}</td>
-              {!singleStage ? <td className="px-2 py-3 text-sm text-slate-700">{row.actor}</td> : null}
+              {!omitActor ? <td className="px-2 py-3 text-sm text-slate-700">{row.actor}</td> : null}
               <td data-column-align="left" className="whitespace-pre-line! px-2 py-3 text-sm text-slate-700">{row.note || "—"}</td>
             </tr>)}
           </tbody>

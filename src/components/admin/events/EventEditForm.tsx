@@ -141,7 +141,6 @@ export default function EventEditForm({
               name="templateId"
               value={event.criteriaTemplateId ?? ""}
             />
-            <input type="hidden" name="status" value={event.status} />
             <input type="hidden" name="scoreMax" value={event.scoreMax ?? ""} />
           </>
         ) : null}
@@ -260,14 +259,13 @@ export default function EventEditForm({
             <RequiredMark/></label>
             <select required
               name="status"
-              disabled={isInUse}
               defaultValue={String(state.values?.status ?? event.status)}
               aria-invalid={state.field === "status"}
-              className={`h-11 w-full rounded-xl border bg-white px-4 text-sm outline-none transition focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${state.field === "status" ? "border-rose-500 ring-3 ring-rose-100" : "border-slate-200"}`}
+              className={`h-11 w-full rounded-xl border bg-white px-4 text-sm outline-none transition focus:border-blue-500 ${state.field === "status" ? "border-rose-500 ring-3 ring-rose-100" : "border-slate-200"}`}
             >
-              <option value="draft">Nháp</option>
+              <option value="draft" disabled={Number(event.submissions ?? 0) > 0}>Nháp</option>
               <option value="published">Công khai</option>
-              <option value="closed">Đóng</option>
+              <option value="closed">Đóng tiếp nhận hồ sơ</option>
             </select>
           </div>
         </div>

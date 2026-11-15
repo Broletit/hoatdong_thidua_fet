@@ -5,7 +5,10 @@ import { requireOfficerParticipantContext } from "@/server/auth/requireOfficerPa
 import { getDatabase } from "@/server/db/mysql";
 import { evaluateSubmissionAuto } from "@/server/events/evaluateSubmissionAuto";
 import { evaluateSubmission } from "@/server/submissions/evaluateSubmission";
-import { assertEventAcceptsSubmissions } from "@/lib/events/eventSubmissionPhase";
+import {
+  assertEventAcceptsSubmissions,
+  assertEventAllowsRevision,
+} from "@/lib/events/eventSubmissionPhase";
 import { assertSubmissionRequirements } from "@/server/submissions/evaluateSubmissionRequirements";
 
 export async function submitOfficerSubmission(submissionId: number) {
@@ -48,12 +51,17 @@ export async function submitOfficerSubmission(submissionId: number) {
     throw new Error("Hồ sơ hiện không thể gửi xét duyệt.");
   }
 
-  assertEventAcceptsSubmissions({
+  const eventState = {
     status: submission.event_status,
     startAt: submission.start_at,
     endAt: submission.end_at,
     allowLate: Number(submission.allow_late ?? 0) === 1,
-  });
+  };
+  if (submission.status === "draft") {
+    assertEventAcceptsSubmissions(eventState);
+  } else {
+    assertEventAllowsRevision(eventState);
+  }
 
   (await evaluateSubmissionAuto(submissionId));
   (await assertSubmissionRequirements(db, submissionId));

@@ -42,6 +42,9 @@ export default function CriteriaInlineItemCreateForm({
   const isOfficer = templateForType === "officer";
   const isEditing = Boolean(editingItem);
 
+  const [evidenceType, setEvidenceType] = useState<string>(() =>
+    editingItem?.evidenceType === "manual" ? "manual" : "both"
+  );
   const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>(
     () => editingItem?.activityRules.map((rule) => Number(rule.activityId)) ?? []
   );
@@ -87,8 +90,10 @@ export default function CriteriaInlineItemCreateForm({
         formData.set("scoreMax", "0");
       }
 
-      for (const activityId of selectedActivityIds) {
-        formData.append("activityIds", String(activityId));
+      if (evidenceType !== "manual") {
+        for (const activityId of selectedActivityIds) {
+          formData.append("activityIds", String(activityId));
+        }
       }
 
       const result = editingItem
@@ -188,10 +193,21 @@ export default function CriteriaInlineItemCreateForm({
 
         <div className="md:col-span-2">
           <label className="mb-1 block text-xs font-medium text-slate-500">Nguồn đạt</label>
-          <select name="evidenceType" defaultValue={editingItem?.evidenceType ?? "manual"} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500">
-            <option value="auto">Tự động</option>
-            <option value="manual">Minh chứng</option>
-            <option value="both">Kết hợp</option>
+          <select
+            name="evidenceType"
+            value={evidenceType}
+            onChange={(event) => {
+              const next = event.target.value;
+              setEvidenceType(next);
+              if (next === "manual") {
+                setSelectedActivityIds([]);
+                setActivityOpen(false);
+              }
+            }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+          >
+            <option value="manual">Nhập mô tả</option>
+            <option value="both">Minh chứng</option>
           </select>
         </div>
 
@@ -202,17 +218,22 @@ export default function CriteriaInlineItemCreateForm({
 
           <input
             value={activityKeyword}
-            onFocus={() => setActivityOpen(true)}
+            disabled={evidenceType === "manual"}
+            onFocus={() => {
+              if (evidenceType !== "manual") setActivityOpen(true);
+            }}
             onChange={(event) => {
               setActivityKeyword(event.target.value);
-              setActivityOpen(true);
+              if (evidenceType !== "manual") setActivityOpen(true);
             }}
             placeholder={
-              selectedActivities.length > 0
-                ? `Đã chọn ${selectedActivities.length} hoạt động`
-                : "Bấm để chọn hoạt động"
+              evidenceType === "manual"
+                ? "Không áp dụng cho tiêu chí nhập mô tả"
+                : selectedActivities.length > 0
+                  ? `Đã chọn ${selectedActivities.length} hoạt động`
+                  : "Bấm để chọn hoạt động"
             }
-            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
           />
 
           {activityOpen ? (
@@ -282,7 +303,9 @@ export default function CriteriaInlineItemCreateForm({
         </div>
 
         <div className="md:col-span-12 text-xs text-slate-500">
-          {selectedActivities.length > 0 ? (
+          {evidenceType === "manual" ? (
+            "Sinh viên chỉ nhập nội dung mô tả, không tải tệp minh chứng."
+          ) : selectedActivities.length > 0 ? (
             <>
               Đã chọn:{" "}
               <span className="font-medium text-slate-700">
@@ -290,7 +313,7 @@ export default function CriteriaInlineItemCreateForm({
               </span>
             </>
           ) : (
-            "Không chọn hoạt động thì tiêu chí này sẽ yêu cầu nộp minh chứng."
+            "Chọn các hoạt động phù hợp để hệ thống gợi ý cho sinh viên khi nộp minh chứng; nếu không chọn, sinh viên tự tải minh chứng tương ứng."
           )}
         </div>
 

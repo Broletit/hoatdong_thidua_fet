@@ -8,6 +8,8 @@ import OfficerSubmissionCriteriaPanel from "@/components/faculty-officer/officer
 import SubmissionStatusBadge from "@/components/shared/submissions/SubmissionStatusBadge";
 import { formatDateTimeVN } from "@/lib/utils/formatDateTimeVN";
 
+import { canEditSubmission } from "@/lib/submissions/submissionStatus";
+
 type SubmissionRow = {
   id: number;
   status: string;
@@ -16,8 +18,10 @@ type SubmissionRow = {
   updated_at: string;
   event_title: string;
   event_description: string | null;
+  event_status: string;
   event_start_at: string;
   event_end_at: string;
+  event_allow_late: number;
   event_score_max: number | null;
 };
 
@@ -28,8 +32,10 @@ type CriteriaRow = {
   group_code: string;
   group_title: string;
   min_required: number;
+  required_count: number;
   group_score_max: number;
   score_max: number;
+  evidence_type: string;
   is_required: number;
   auto_passed: number | null;
   auto_message: string | null;
@@ -72,8 +78,10 @@ export async function OfficerSubmissionDetailPageView({
         s.updated_at,
         e.title AS event_title,
         e.description AS event_description,
+        e.status AS event_status,
         e.start_at AS event_start_at,
         e.end_at AS event_end_at,
+        e.allow_late AS event_allow_late,
         e.score_max AS event_score_max
       FROM submissions s
       INNER JOIN events e ON e.id = s.event_id
@@ -93,8 +101,10 @@ export async function OfficerSubmissionDetailPageView({
         i.group_code,
         g.title AS group_title,
         g.min_required,
+        GREATEST(1, COALESCE(i.required_count, 1)) AS required_count,
         g.score_max AS group_score_max,
         i.score_max,
+        i.evidence_type,
         i.is_required,
         ar.passed AS auto_passed,
         ar.message AS auto_message,
@@ -151,7 +161,21 @@ export async function OfficerSubmissionDetailPageView({
       `, [user.id, submissionId])) as CriteriaRow[];
 
   const evidenceFiles = (await db.rows("SELECT id,criteria_code,file_name,mime_type FROM submission_ready_files WHERE submission_id=? ORDER BY id DESC", [submissionId])) as Array<{id:number;criteria_code:string;file_name:string;mime_type:string}>;
-  const criteriaWithFiles = criteria.map(item=>({...item,evidence_type:"manual",evidence_files:evidenceFiles.filter(file=>file.criteria_code===item.code).map(file=>({id:file.id,fileName:file.file_name,mimeType:file.mime_type}))}));
+  const unitRows = (await db.rows<{ id: number; criteria_code: string; note: string | null; file_id: number | null; file_name: string | null; review_decision: string | null }>(`
+    SELECT eu.id, eu.criteria_code, eu.note,
+      (SELECT sf.id FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_id,
+      (SELECT sf.file_name FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_name,
+      (SELECT er.decision FROM submission_evidence_reviews er WHERE er.evidence_unit_id = eu.id ORDER BY er.round DESC LIMIT 1) AS review_decision
+    FROM submission_evidence_units eu
+    WHERE eu.submission_id = ?
+      AND EXISTS(SELECT 1 FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL)
+    ORDER BY eu.id ASC
+  `, [submissionId]));
+  const criteriaWithFiles = criteria.map(item=>({
+    ...item,
+    evidence_files:evidenceFiles.filter(file=>file.criteria_code===item.code).map(file=>({id:file.id,fileName:file.file_name,mimeType:file.mime_type})),
+    evidence_units:unitRows.filter(u=>u.criteria_code===item.code).map(u=>({id:Number(u.id),note:u.note,fileId:u.file_id?Number(u.file_id):null,fileName:u.file_name,reviewDecision:u.review_decision})),
+  }));
 
   const reviews = (await db.rows(`
       SELECT round, decision, note
@@ -168,7 +192,12 @@ export async function OfficerSubmissionDetailPageView({
   }));
   const timeline = (await getSubmissionTimeline(submissionId));
 
-  const canEdit = ["draft", "needs_revision_v1"].includes(submission.status);
+  const canEdit = canEditSubmission(submission.status, {
+    status: submission.event_status,
+    startAt: submission.event_start_at,
+    endAt: submission.event_end_at,
+    allowLate: Number(submission.event_allow_late ?? 0) === 1,
+  });
   const groupMaximum = Array.from(
     new Map(criteria.map((item) => [item.group_code, Number(item.group_score_max ?? 0)])).values()
   ).reduce((total, score) => total + score, 0);

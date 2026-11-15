@@ -506,6 +506,14 @@ table.criteria-detail-table tbody tr::before {
   display: none !important;
 }
 
+@media (min-width: 1440px) {
+  .dashboard-shell main table.responsive-data-table {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: none !important;
+  }
+}
+
 table.event-criteria-table thead tr::before,
 table.event-criteria-table tbody tr::before {
   content: none !important;
@@ -675,8 +683,11 @@ input:user-invalid,
 select:user-invalid,
 textarea:user-invalid,
 [aria-invalid="true"] {
-  border-color: #f43f5e !important;
-  box-shadow: 0 0 0 3px rgb(244 63 94 / 0.12);
+  border-color: #ef4444 !important;
+}
+
+[data-validation-valid="true"] {
+  border-color: #10b981 !important;
 }
 
 .required-field-control {
@@ -1039,6 +1050,7 @@ table.submission-criteria-table {
    màn hình hẹp, không được để lại khoảng trắng ở bên phải cột cuối. */
 @media (min-width: 1024px) {
   table.criteria-definition-table,
+  table.review-history-table,
   table.event-criteria-table,
   table.submission-criteria-table {
     width: 100% !important;

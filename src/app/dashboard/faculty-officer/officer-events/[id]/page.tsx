@@ -103,7 +103,7 @@ export async function OfficerEventDetailPageView({
       LEFT JOIN criteria_templates ct ON ct.id = e.criteria_template_id
       WHERE e.id = ?
         AND e.type = 'officer'
-        AND e.status = 'published'
+        AND e.status IN ('published', 'closed')
       LIMIT 1
       `, [eventId])) as EventRow | undefined;
 
@@ -190,7 +190,10 @@ export async function OfficerEventDetailPageView({
   const criteria: OfficerEventCriteriaItem[] = criteriaRows.map((item) => {
     const matchedActivityCount = Number(item.matched_activity_count ?? 0);
     const matchedActivityScore = Number(item.matched_activity_score ?? 0);
-    const autoPassed = matchedActivityCount > 0;
+    const matchedTitles = item.matched_activity_titles
+      ? String(item.matched_activity_titles).split("||").map((t) => t.trim()).filter(Boolean)
+      : [];
+    const autoPassed = false;
 
     return {
       code: String(item.code ?? ""),
@@ -203,14 +206,12 @@ export async function OfficerEventDetailPageView({
       isRequired: Number(item.is_required ?? 0) === 1,
       requiredCount: Math.max(1, Number(item.required_count ?? 1)),
       autoPassed,
-      autoMessage: autoPassed
-        ? `Đạt tự động từ hoạt động: ${String(item.matched_activity_titles ?? "").split("||").filter(Boolean).join(", ")}`
+      autoMessage: matchedTitles.length > 0
+        ? `Hệ thống ghi nhận bạn đã tham gia hoạt động: ${matchedTitles.join(", ")}. Hãy nộp minh chứng cho hoạt động này.`
         : null,
       matchedActivityCount,
       matchedActivityScore,
-      matchedActivityTitles: item.matched_activity_titles
-        ? String(item.matched_activity_titles).split("||")
-        : [],
+      matchedActivityTitles: matchedTitles,
     };
   });
 

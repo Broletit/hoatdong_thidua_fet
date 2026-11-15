@@ -1,4 +1,6 @@
-const ACTIVITY_PREFIX = "Đạt tự động từ hoạt động:";
+const LEGACY_ACTIVITY_PREFIX = "Đạt tự động từ hoạt động:";
+const SUGGESTION_ACTIVITY_PREFIX = "Hệ thống ghi nhận bạn đã tham gia hoạt động:";
+const SUGGESTION_ACTIVITY_SUFFIX = "Hãy nộp minh chứng cho hoạt động này.";
 
 function parseActivityTitles(value: string) {
   const trimmed = value.trim();
@@ -19,21 +21,30 @@ function parseActivityTitles(value: string) {
     .filter(Boolean);
 }
 
+export function buildActivitySuggestionMessage(titles: string[]) {
+  const cleanTitles = titles.map((item) => item.trim()).filter(Boolean);
+  if (!cleanTitles.length) return null;
+  return `${SUGGESTION_ACTIVITY_PREFIX} ${cleanTitles.join(", ")}. ${SUGGESTION_ACTIVITY_SUFFIX}`;
+}
+
 export function formatAutoCriteriaMessage(
   message: string | null,
   matchedActivityTitles?: string | null,
 ) {
   const titles = matchedActivityTitles ? parseActivityTitles(matchedActivityTitles) : [];
-  if (titles.length > 0) return `${ACTIVITY_PREFIX} ${titles.join(", ")}`;
+  if (titles.length > 0) return buildActivitySuggestionMessage(titles);
 
   const normalizedMessage = String(message ?? "").trim();
   if (!normalizedMessage) return null;
-  if (!normalizedMessage.startsWith(ACTIVITY_PREFIX)) return normalizedMessage;
+  if (normalizedMessage.startsWith(LEGACY_ACTIVITY_PREFIX)) {
+    const rawRest = normalizedMessage.slice(LEGACY_ACTIVITY_PREFIX.length).replace(/\.$/, "");
+    const messageTitles = parseActivityTitles(rawRest);
+    return messageTitles.length > 0
+      ? buildActivitySuggestionMessage(messageTitles)
+      : normalizedMessage;
+  }
 
-  const messageTitles = parseActivityTitles(normalizedMessage.slice(ACTIVITY_PREFIX.length));
-  return messageTitles.length > 0
-    ? `${ACTIVITY_PREFIX} ${messageTitles.join(", ")}`
-    : normalizedMessage;
+  return normalizedMessage;
 }
 
 export function AutoCriteriaMessage({
@@ -44,7 +55,11 @@ export function AutoCriteriaMessage({
   matchedActivityTitles?: string | null;
 }) {
   const normalizedMessage = formatAutoCriteriaMessage(message, matchedActivityTitles);
-  return normalizedMessage ? <div className="mt-2 text-xs text-emerald-700">{normalizedMessage}</div> : null;
+  return normalizedMessage ? (
+    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-medium text-emerald-700">
+      {normalizedMessage}
+    </div>
+  ) : null;
 }
 
 export function AutoCriteriaBadge() {

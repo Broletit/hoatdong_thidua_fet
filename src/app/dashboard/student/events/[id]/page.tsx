@@ -43,7 +43,6 @@ type CriteriaRow = {
 
 function getAutoProgressMessage({
   matchedCount,
-  requiredCount,
   titles,
   passed,
 }: {
@@ -52,15 +51,13 @@ function getAutoProgressMessage({
   titles: string[];
   passed: boolean;
 }) {
-  if (matchedCount <= 0) return null;
-  const activityText = titles.length
-    ? ` từ hoạt động: ${titles.join(", ")}`
-    : "";
-  if (passed) {
-    return `Đạt tự động${activityText}.`;
+  if (titles.length > 0) {
+    return `Hệ thống ghi nhận bạn đã tham gia hoạt động: ${titles.join(", ")}. Hãy nộp minh chứng cho hoạt động này.`;
   }
-  const remaining = Math.max(0, requiredCount - matchedCount);
-  return `Đã ghi nhận tự động ${matchedCount}/${requiredCount} yêu cầu${activityText}. Cần bổ sung thêm ${remaining} minh chứng.`;
+  if (passed && matchedCount > 0) {
+    return "Đạt tự động từ điểm rèn luyện.";
+  }
+  return null;
 }
 
 export default async function StudentEventDetailPage({
@@ -98,7 +95,7 @@ export default async function StudentEventDetailPage({
         ON s.event_id = e.id
        AND s.user_id = ?
       WHERE e.id = ?
-        AND (e.status = 'published' OR (e.status = 'closed' AND s.id IS NOT NULL))
+        AND e.status IN ('published', 'closed')
         AND e.type = 'student'
       LIMIT 1
       `, [user.id, eventId])) as EventRow | undefined;
@@ -107,14 +104,15 @@ export default async function StudentEventDetailPage({
 
   const allowLate = Number(event.allow_late ?? 0) === 1;
 
-  const canSubmit =
-    canSubmitToEvent({
-      status: event.status,
-      startAt: event.start_at,
-      endAt: event.end_at,
-      allowLate,
-    }) &&
-    (!event.submission_status || canEditSubmission(String(event.submission_status)));
+  const eventState = {
+    status: event.status,
+    startAt: event.start_at,
+    endAt: event.end_at,
+    allowLate,
+  };
+  const canSubmit = event.submission_status
+    ? canEditSubmission(String(event.submission_status), eventState)
+    : canSubmitToEvent(eventState);
 
   const templateId = Number(event.criteria_template_id ?? 0);
 
@@ -132,14 +130,13 @@ export default async function StudentEventDetailPage({
               cti.required_count,
 
               CASE
-                WHEN attended.activity_title IS NOT NULL THEN 1
                 WHEN conduct_result.passed = 1 THEN 1
                 ELSE 0
               END AS auto_passed,
 
               CASE
                 WHEN attended.activity_title IS NOT NULL
-                  THEN CONCAT('Đạt tự động từ hoạt động: ', attended.activity_title)
+                  THEN CONCAT(CONCAT('Hệ thống ghi nhận bạn đã tham gia hoạt động: ', attended.activity_title), '. Hãy nộp minh chứng cho hoạt động này.')
 
                 WHEN conduct_result.passed = 1
                   THEN CONCAT(CONCAT('Đạt tự động từ điểm rèn luyện: ', conduct_result.total_score), ' điểm')
@@ -259,13 +256,23 @@ export default async function StudentEventDetailPage({
     };
   });
   const editing=query.edit==="1"&&Boolean(event.submission_id)&&canSubmit;
-  const editCriteria=editing?(await db.rows(`SELECT i.code,i.title,i.description,i.group_code,g.title group_title,g.min_required,i.is_required,i.required_count,ar.passed auto_passed,ar.message auto_message,COALESCE(si.content_text,(SELECT eu.note FROM submission_evidence_units eu WHERE eu.submission_id=? AND eu.criteria_code=i.code AND NULLIF(TRIM(COALESCE(eu.note,'')),'') IS NOT NULL ORDER BY eu.updated_at DESC,eu.id DESC LIMIT 1)) content_text,(SELECT sf.file_name FROM submission_ready_files sf WHERE sf.submission_id=? AND sf.criteria_code=i.code ORDER BY sf.uploaded_at DESC,sf.id DESC LIMIT 1) file_name,(SELECT cr.decision FROM submission_criteria_reviews cr WHERE cr.submission_id=? AND cr.criteria_code=i.code AND cr.round=s.review_round LIMIT 1) review_decision FROM submissions s INNER JOIN event_criteria_items i ON i.event_id=s.event_id INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code LEFT JOIN submission_auto_results ar ON ar.submission_id=s.id AND ar.criteria_code=i.code LEFT JOIN submission_items si ON si.submission_id=s.id AND si.criteria_code=i.code WHERE s.id=? ORDER BY g.sort_order,i.sort_order`, [event.submission_id, event.submission_id, event.submission_id, event.submission_id, event.submission_id])) as Array<{code:string;title:string;description:string|null;group_code:string;group_title:string;min_required:number;is_required:number;required_count:number;auto_passed:number|null;auto_message:string|null;content_text:string|null;file_name:string|null;review_decision:string|null}>:[];
+  const editCriteria=editing?(await db.rows(`SELECT i.code,i.title,i.description,i.group_code,g.title group_title,g.min_required,i.evidence_type,i.is_required,i.required_count,ar.passed auto_passed,ar.message auto_message,COALESCE(si.content_text,(SELECT eu.note FROM submission_evidence_units eu WHERE eu.submission_id=? AND eu.criteria_code=i.code AND NULLIF(TRIM(COALESCE(eu.note,'')),'') IS NOT NULL ORDER BY eu.updated_at DESC,eu.id DESC LIMIT 1)) content_text,(SELECT sf.file_name FROM submission_ready_files sf WHERE sf.submission_id=? AND sf.criteria_code=i.code ORDER BY sf.uploaded_at DESC,sf.id DESC LIMIT 1) file_name,(SELECT cr.decision FROM submission_criteria_reviews cr WHERE cr.submission_id=? AND cr.criteria_code=i.code ORDER BY cr.round DESC LIMIT 1) review_decision FROM submissions s INNER JOIN event_criteria_items i ON i.event_id=s.event_id INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code LEFT JOIN submission_auto_results ar ON ar.submission_id=s.id AND ar.criteria_code=i.code LEFT JOIN submission_items si ON si.submission_id=s.id AND si.criteria_code=i.code WHERE s.id=? ORDER BY g.sort_order,i.sort_order`, [event.submission_id, event.submission_id, event.submission_id, event.submission_id])) as Array<{code:string;title:string;description:string|null;group_code:string;group_title:string;min_required:number;evidence_type:string;is_required:number;required_count:number;auto_passed:number|null;auto_message:string|null;content_text:string|null;file_name:string|null;review_decision:string|null}>:[];
+  const editUnits = editing ? (await db.rows<{ id: number; criteria_code: string; note: string | null; file_id: number | null; file_name: string | null; review_decision: string | null }>(`
+    SELECT eu.id, eu.criteria_code, eu.note,
+      (SELECT sf.id FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_id,
+      (SELECT sf.file_name FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL ORDER BY sf.id DESC LIMIT 1) AS file_name,
+      (SELECT er.decision FROM submission_evidence_reviews er WHERE er.evidence_unit_id = eu.id ORDER BY er.round DESC LIMIT 1) AS review_decision
+    FROM submission_evidence_units eu
+    WHERE eu.submission_id = ?
+      AND EXISTS(SELECT 1 FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL)
+    ORDER BY eu.id ASC
+  `, [event.submission_id])) : [];
 
   return (
     <main className="space-y-6">
       <StudentEventDetailHeader item={item} />
       <StudentEventDetailCard item={item} showAction={!editing} />
-      {editing?<div id="minh-chung-can-bo-sung" className="scroll-mt-24"><StudentSubmissionEvidenceForm submissionId={Number(event.submission_id)} canEdit viewHref={`/dashboard/student/submissions/${event.submission_id}`} criteria={editCriteria.map((row)=>{const preview=criteria.find((item)=>item.code===row.code);return {code:row.code,title:row.title,description:row.description,groupCode:row.group_code,groupTitle:row.group_title,minRequired:Number(row.min_required),requiredCount:Math.max(1,Number(row.required_count??1)),isRequired:Number(row.is_required)===1,autoPassed:Number(row.auto_passed??0)===1||Boolean(preview?.autoPassed),autoMessage:row.auto_message??preview?.autoMessage??null,contentText:row.content_text,fileName:row.file_name,reviewDecision:row.review_decision};})}/></div>:<StudentEventApplyForm
+      {editing?<div id="minh-chung-can-bo-sung" className="scroll-mt-24"><StudentSubmissionEvidenceForm submissionId={Number(event.submission_id)} canEdit viewHref={`/dashboard/student/submissions/${event.submission_id}`} criteria={editCriteria.map((row)=>{const preview=criteria.find((item)=>item.code===row.code);const isManual=row.evidence_type==="manual";const units=editUnits.filter(u=>u.criteria_code===row.code).map(u=>({id:Number(u.id),note:u.note,fileId:u.file_id?Number(u.file_id):null,fileName:u.file_name,reviewDecision:u.review_decision}));return {code:row.code,title:row.title,description:row.description,groupCode:row.group_code,groupTitle:row.group_title,minRequired:Number(row.min_required),requiredCount:Math.max(1,Number(row.required_count??1)),evidenceType:row.evidence_type,isRequired:Number(row.is_required)===1,autoPassed:!isManual&&(Number(row.auto_passed??0)===1||Boolean(preview?.autoPassed)),autoMessage:!isManual?(preview?.autoMessage??row.auto_message??null):null,contentText:row.content_text,fileName:row.file_name,reviewDecision:row.review_decision,evidenceUnits:units};})}/></div>:<StudentEventApplyForm
         eventId={item.id}
         criteria={criteria}
         canSubmit={canSubmit}
