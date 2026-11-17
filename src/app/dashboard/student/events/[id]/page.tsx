@@ -197,7 +197,7 @@ export default async function StudentEventDetailPage({
                  WHERE term.id = ?
                )
               WHERE ccr.template_id = ?
-              GROUP BY ccr.criteria_code
+              GROUP BY ccr.criteria_code, ccr.min_score
             ) conduct_result
               ON conduct_result.criteria_code = cti.code
 

@@ -83,7 +83,12 @@ export default function Topbar({
 
   function handleLogout() {
     startTransition(async () => {
-      await logoutAction();
+      try {
+        const result = await logoutAction();
+        window.location.assign(result?.redirectTo || "/login");
+      } catch {
+        window.location.assign("/login");
+      }
     });
   }
 

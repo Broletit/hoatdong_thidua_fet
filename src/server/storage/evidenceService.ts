@@ -163,7 +163,11 @@ export async function saveEvidence(user: EvidenceUser, submissionId: number, for
           : formData.get(`file_${code}`);
         const existingUnit = currentUnits[slot] ?? null;
         const unitId = existingUnit ? Number(existingUnit.id) : null;
-        const isUnitLocked = isCriterionLocked || (unitId !== null && lockedPassedUnitIds.has(unitId));
+        const unitHasFile = existingUnit ? Boolean(existingUnit.has_file) : (slot === 0 && !currentUnits.length && existingByCode.has(code));
+        const isUnitLocked = unitHasFile && (
+          (unitId !== null && lockedPassedUnitIds.has(unitId)) ||
+          (isCriterionLocked && (unitId !== null ? lockedPassedUnitIds.has(unitId) : slot === 0))
+        );
 
         const nextNote = String(rawNote ?? "").trim();
         const prevNote = existingUnit ? String(existingUnit.note ?? "").trim() : (slot === 0 && !currentUnits.length ? (existingByCode.get(code) ?? "") : "");

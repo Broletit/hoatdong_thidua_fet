@@ -64,7 +64,10 @@ export async function evaluateSubmissionRequirements(db:Database,submissionId:nu
   }
   const groupResults=Array.from(groups,([code,group])=>({code,title:group.title,required:group.required,achieved:group.achieved,passed:group.total>0&&group.missingRequired===0&&group.achieved>=group.required}));
   const deficientGroups=groupResults.filter(group=>!group.passed).map(({code,title,achieved,required})=>({code,title,achieved,required}));
-  return {valid:groupResults.length>0&&missingCriteria.length===0&&deficientGroups.length===0,missingCriteria,deficientGroups,groupResults,criterionProgress};
+  const totalRequired = groupResults.reduce((sum, g) => sum + g.required, 0);
+  const effectiveAchieved = groupResults.reduce((sum, g) => sum + Math.min(g.achieved, g.required), 0);
+  const completionRate = totalRequired > 0 ? Math.min(100, Math.round((effectiveAchieved / totalRequired) * 100)) : 0;
+  return {valid:groupResults.length>0&&missingCriteria.length===0&&deficientGroups.length===0,missingCriteria,deficientGroups,groupResults,criterionProgress,totalRequired,effectiveAchieved,completionRate};
 }
 
 export async function assertSubmissionRequirements(db:Database,submissionId:number,mode:Mode="candidate"){

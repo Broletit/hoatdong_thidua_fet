@@ -40,7 +40,7 @@ export default function Sidebar({
             <Link
               href={getDefaultRouteByRoleContext(role as never)}
               className="flex h-12 w-12 items-center justify-center rounded-2xl transition hover:bg-white/10"
-              title="Khoa Công nghệ Điện tử"
+              aria-label="Khoa Công nghệ Điện tử"
             >
               <Image
                 src="/Logo.png"

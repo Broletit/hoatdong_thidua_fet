@@ -129,7 +129,7 @@ export default async function AdminUsersPage({
       LEFT JOIN classes c ON c.id = cm.class_id
       LEFT JOIN user_role_assignments ura ON ura.user_id=u.id
       ${whereSql}
-      GROUP BY u.id
+      GROUP BY u.id, u.mssv, u.cohort, u.full_name, u.email, u.role, u.is_active
       ORDER BY u.id DESC
       LIMIT ?
       OFFSET ?

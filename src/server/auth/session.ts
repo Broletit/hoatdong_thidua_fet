@@ -97,5 +97,12 @@ export async function revokeCurrentSession() {
     (await getDatabase().execute(`UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND revoked_at IS NULL`, [sessionId]));
   }
 
+  cookieStore.set(SESSION_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
   cookieStore.delete(SESSION_COOKIE);
 }

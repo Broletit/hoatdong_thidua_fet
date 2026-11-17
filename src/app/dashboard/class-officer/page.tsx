@@ -70,14 +70,14 @@ export default async function ClassOfficerDashboardPage({ searchParams }: { sear
   const activityPage = Math.min(Math.max(1, Number.isFinite(requestedActivityPage) ? requestedActivityPage : 1), activityTotalPages);
 
   const activityRows = classIds.length ? (await db.rows(`
-    SELECT a.id, a.title,
+    SELECT a.id, a.title, a.start_at,
       COUNT(DISTINCT CASE WHEN ar.status<>'cancelled' THEN ar.user_id END) registered,
       COUNT(DISTINCT CASE WHEN ar.status='attended' THEN ar.user_id END) attended
     FROM activities a
     INNER JOIN activity_registrations ar ON ar.activity_id=a.id
     INNER JOIN class_members cm ON cm.user_id=ar.user_id AND cm.left_at IS NULL
     WHERE cm.class_id IN (${placeholders}) AND a.term_id=? AND a.audience_type='student'
-    GROUP BY a.id, a.title
+    GROUP BY a.id, a.title, a.start_at
     ORDER BY attended DESC, registered DESC, CAST(a.start_at AS DATETIME(3)) DESC
     LIMIT ? OFFSET ?
   `, [...classIds, term.id, activityPageSize, (activityPage - 1) * activityPageSize])) as ActivityRow[] : [];

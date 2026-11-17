@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -10,13 +11,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -128,6 +122,24 @@ select:open {
 .dashboard-shell > aside { scrollbar-width: none; }
 .dashboard-shell > aside::-webkit-scrollbar { display: none; }
 body:has(.dashboard-shell) { overflow: hidden; }
+
+@media (max-width: 1023px) and (orientation: landscape), (max-height: 540px) and (orientation: landscape) {
+  body:has(.dashboard-shell) {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .dashboard-shell:not(.activity-detail-dashboard-shell) {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow: visible !important;
+  }
+  .dashboard-shell:not(.activity-detail-dashboard-shell) > div {
+    overflow: visible !important;
+  }
+  .dashboard-shell:not(.activity-detail-dashboard-shell) > div > main {
+    overflow: visible !important;
+  }
+}
 
 /* Route chi tiết hoạt động admin: neo shell trực tiếp vào viewport để tránh
    sai lệch dvh ở Chrome khi thanh trình duyệt/zoom thay đổi. */

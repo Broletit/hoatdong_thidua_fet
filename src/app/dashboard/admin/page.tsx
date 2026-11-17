@@ -59,7 +59,7 @@ export default async function AdminDashboardPage({
       WHERE e.term_id = ? AND e.status = 'published'
         AND CAST(e.end_at AS DATETIME(3)) >= CURRENT_TIMESTAMP(3)
         AND CAST(e.end_at AS DATETIME(3)) <= DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL 7 DAY)
-      GROUP BY e.id
+      GROUP BY e.id, e.title, e.end_at
       ORDER BY CAST(e.end_at AS DATETIME(3)) ASC
       LIMIT 3
       `, [term.id])) as ClosingEvent[];
@@ -117,7 +117,7 @@ export default async function AdminDashboardPage({
         <div className="hidden rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60">
           <div className="flex items-start justify-between gap-3">
             <div>
-            <h2 className="text-xl font-semibold text-slate-900">Tiến độ vận hành học kỳ</h2>
+              <h2 className="text-xl font-semibold text-slate-900">Tiến độ vận hành học kỳ</h2>
             </div>
             <Link
               href="/dashboard/admin/reports"
@@ -190,9 +190,9 @@ export default async function AdminDashboardPage({
         <div className="mt-5 grid gap-4 md:grid-cols-3">
           <AlertCard
             icon={<ClipboardCheck size={18} />}
-            value={pendingTotal}
+            value={summary.officer_pending}
             label="Hồ sơ cán bộ chờ duyệt"
-            href="/dashboard/admin/submissions"
+            href="/dashboard/admin/officer-reviews"
           />
           <AlertCard
             icon={<Activity size={18} />}

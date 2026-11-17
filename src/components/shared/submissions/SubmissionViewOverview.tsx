@@ -19,7 +19,7 @@ export default function SubmissionViewOverview({
   totalCriteria: number;
 }) {
   const progress = totalCriteria > 0
-    ? Math.round((achievedCriteria / totalCriteria) * 100)
+    ? Math.min(100, Math.round((achievedCriteria / totalCriteria) * 100))
     : 0;
 
   return (

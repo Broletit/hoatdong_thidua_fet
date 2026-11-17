@@ -95,10 +95,28 @@ export default function StudentSubmissionEvidenceForm({
   const [externalItemPages, setExternalItemPages] = useState<Record<string, { page: number; token: number }>>({});
   const evidenceNotNeeded=(item:CriteriaItem)=>!item.isRequired&&criteria.filter(candidate=>candidate.groupCode===item.groupCode&&(candidate.autoPassed||candidate.reviewDecision==="pass")).length>=Math.max(item.minRequired,criteria.filter(candidate=>candidate.groupCode===item.groupCode&&candidate.isRequired).length);
   const isDescriptionOnly=(item:CriteriaItem)=>item.evidenceType==="manual";
-  const isLockedPass=(item:CriteriaItem)=>item.autoPassed||item.reviewDecision==="pass";
-  const isCriteriaDisabled=(item:CriteriaItem)=>!canEdit||isLockedPass(item)||evidenceNotNeeded(item);
+  const isAllSlotsLockedPass = (item: CriteriaItem) => {
+    if (item.autoPassed) return true;
+    if (isDescriptionOnly(item)) {
+      return item.reviewDecision === "pass" && Boolean((item.contentText ?? "").trim());
+    }
+    const reqCount = Math.max(1, item.requiredCount);
+    const units = item.evidenceUnits ?? [];
+    if (units.length < reqCount && reqCount > 1) return false;
+    let passedCount = 0;
+    for (let slot = 0; slot < reqCount; slot++) {
+      const u = units[slot];
+      const hasFile = Boolean(u?.fileName || (slot === 0 && !units.length && item.fileName));
+      if (hasFile && (u?.reviewDecision === "pass" || (slot === 0 && !units.length && item.reviewDecision === "pass") || (item.reviewDecision === "pass" && u?.reviewDecision !== "fail"))) {
+        passedCount++;
+      }
+    }
+    return passedCount >= reqCount;
+  };
+  const isLockedPass = (item: CriteriaItem) => isAllSlotsLockedPass(item);
+  const isCriteriaDisabled = (item: CriteriaItem) => !canEdit || isAllSlotsLockedPass(item) || evidenceNotNeeded(item);
   const isCriterionSatisfiedForDisplay = (item: CriteriaItem) => {
-    if (item.autoPassed || item.reviewDecision === "pass") return true;
+    if (item.autoPassed) return true;
     if (isDescriptionOnly(item)) {
       const currentNote = (noteStates[item.code] ?? item.contentText ?? "").trim();
       if (!currentNote) return false;
@@ -210,6 +228,12 @@ export default function StudentSubmissionEvidenceForm({
     }
     try {
       const result = await saveStudentSubmissionEvidence(submissionId, formData);
+      if (!result.ok) {
+        return {
+          ok: false,
+          message: getUserFacingActionError(new Error(result.message), "Không thể lưu minh chứng."),
+        };
+      }
       setFileStates({});
       setNoteStates({});
       setMissingEvidence([]);
@@ -267,7 +291,7 @@ export default function StudentSubmissionEvidenceForm({
       router.refresh();
       return { ok: true, message: result.message };
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : "Gửi hồ sơ thất bại.";
+      const errMsg = getUserFacingActionError(error, "Gửi hồ sơ thất bại.");
       toast.error(errMsg, { id: `submit-err-${submissionId}` });
       return {
         ok: false,
@@ -297,6 +321,12 @@ export default function StudentSubmissionEvidenceForm({
     setSupportError("");
     try {
       const result = await requestSubmissionSupport(submissionId, formData);
+      if (!result.ok) {
+        const errMsg = getUserFacingActionError(new Error(result.message), "Không thể gửi yêu cầu hỗ trợ.");
+        setSupportError(errMsg);
+        toast.error(errMsg, { id: `support-err-${submissionId}` });
+        return { ok: false, message: errMsg };
+      }
       toast.success(result.message, { id: `submission-support-${submissionId}` });
       setSupportNoteValue("");
       if (supportNoteRef.current) {
@@ -305,10 +335,7 @@ export default function StudentSubmissionEvidenceForm({
       router.refresh();
       return { ok: true, message: "" };
     } catch (error) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : "Không thể gửi yêu cầu hỗ trợ.";
+      const msg = getUserFacingActionError(error, "Không thể gửi yêu cầu hỗ trợ.");
       setSupportError(msg);
       return {
         ok: false,
@@ -358,7 +385,7 @@ export default function StudentSubmissionEvidenceForm({
           const groupCode = items[0]?.groupCode ?? "";
           const groupRequired = Math.max(items[0]?.minRequired ?? 0, items.filter(item => item.isRequired).length);
           const groupSubmitted = items.filter(isCriterionSatisfiedForDisplay).length;
-          const groupApproved = items.filter(item => item.autoPassed || item.reviewDecision === "pass").length;
+          const groupApproved = items.filter(isAllSlotsLockedPass).length;
           return (
             <div
               key={groupTitle}
@@ -501,16 +528,17 @@ export default function StudentSubmissionEvidenceForm({
                         const fieldKey = `${item.code}_${slot}`;
                         const existingFileName = unit?.fileName ?? (slot === 0 && !item.evidenceUnits?.length ? item.fileName : null);
                         const existingNote = unit?.note ?? (slot === 0 && !item.evidenceUnits?.length ? item.contentText : "");
-                        const isSlotLockedPass = item.reviewDecision === "pass" || unit?.reviewDecision === "pass";
+                        const hasExistingFile = Boolean(existingFileName);
+                        const isSlotLockedPass = hasExistingFile && (unit?.reviewDecision === "pass" || (slot === 0 && !item.evidenceUnits?.length && item.reviewDecision === "pass") || (item.reviewDecision === "pass" && unit?.reviewDecision !== "fail"));
                         const hasValidNewFile = Boolean(fileStates[fieldKey]?.name && !fileStates[fieldKey]?.error);
                         const currentSlotNote = noteStates[fieldKey] ?? existingNote ?? "";
                         const isSlotNoteEdited = noteStates[fieldKey] !== undefined && currentSlotNote.trim() !== (existingNote ?? "").trim();
-                        const isSlotFailedRaw = !isSlotLockedPass && (unit?.reviewDecision === "fail" || (!item.evidenceUnits?.length && item.reviewDecision === "fail"));
+                        const isSlotFailedRaw = !isSlotLockedPass && hasExistingFile && (unit?.reviewDecision === "fail" || (!item.evidenceUnits?.length && item.reviewDecision === "fail"));
                         const isSlotFailed = isSlotFailedRaw && !hasValidNewFile && !isSlotNoteEdited;
-                        const isSlotMissing = !isSlotLockedPass && missingEvidence.includes(item.code) && !hasValidNewFile && (!existingFileName || isSlotFailed);
-                        const isSlotHighlighted = isSlotFailed || isSlotMissing || Boolean(fileStates[fieldKey]?.error);
-                        const isSlotSatisfied = !isSlotHighlighted && (isSlotLockedPass || hasValidNewFile || (Boolean(existingFileName) && !isSlotFailed));
-                        const isSlotDisabled = isCriteriaDisabled(item) || isSlotLockedPass;
+                        const isSlotMissing = !isSlotLockedPass && (!hasExistingFile || isSlotFailed) && (missingEvidence.includes(item.code) || !isCriterionSatisfiedForDisplay(item));
+                        const isSlotHighlighted = isSlotFailed || (missingEvidence.includes(item.code) && isSlotMissing) || Boolean(fileStates[fieldKey]?.error);
+                        const isSlotSatisfied = !isSlotHighlighted && (isSlotLockedPass || hasValidNewFile || (hasExistingFile && !isSlotFailed));
+                        const isSlotDisabled = !canEdit || isSlotLockedPass || evidenceNotNeeded(item);
                         return (
                           <div
                             key={fieldKey}

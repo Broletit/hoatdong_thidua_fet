@@ -6,8 +6,7 @@ import { validateApiRequest } from "@/server/auth/apiRequestGuard";
 
 export async function proxy(request: NextRequest) {
   const isApi = request.nextUrl.pathname.startsWith("/api/");
-  const resendWebhook = request.nextUrl.pathname === "/api/webhooks/resend";
-  if (isApi && !resendWebhook) {
+  if (isApi) {
     const invalidRequest = validateApiRequest(request);
     if (invalidRequest) return invalidRequest;
   }
@@ -16,7 +15,7 @@ export async function proxy(request: NextRequest) {
   const pageRoute = request.nextUrl.pathname.match(detailPagePattern);
   const apiRoute = request.nextUrl.pathname.match(detailApiPattern);
   const evidenceRoute = request.nextUrl.pathname.startsWith("/uploads/submissions/");
-  const protectedApi = isApi && request.nextUrl.pathname !== "/api/auth/me" && !resendWebhook;
+  const protectedApi = isApi && request.nextUrl.pathname !== "/api/auth/me";
   if (!numeric && !publicRoute && !pageRoute && !apiRoute && !evidenceRoute && !protectedApi) return NextResponse.next();
   const db = getDatabase();
   const session = (await db.first(`SELECT s.login_context,u.role FROM sessions s JOIN users u ON u.id=s.user_id

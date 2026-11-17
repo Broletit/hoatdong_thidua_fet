@@ -48,7 +48,6 @@ export default function SidebarGroup({
             <Link
               key={item.href}
               href={item.href}
-              title={item.label}
               aria-label={emailMissing&&item.href.endsWith("/profile")?`${item.label}: Cần cập nhật email khôi phục`:item.label}
               className={[
                 "relative mx-auto flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 ease-out hover:-translate-y-0.5 hover:scale-105",

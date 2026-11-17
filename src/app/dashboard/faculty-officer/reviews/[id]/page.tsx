@@ -221,8 +221,8 @@ export default async function FacultyOfficerReviewDetailPage({
           updatedAt={submission.updated_at}
           closesAt={submission.closes_at}
           currentRound={Number(submission.review_round)}
-          achievedCriteria={achievedCriteria}
-          totalCriteria={criteria.length}
+          achievedCriteria={requirements.totalRequired > 0 ? requirements.effectiveAchieved : achievedCriteria}
+          totalCriteria={requirements.totalRequired > 0 ? requirements.totalRequired : criteria.length}
         />
       ) : null}
 

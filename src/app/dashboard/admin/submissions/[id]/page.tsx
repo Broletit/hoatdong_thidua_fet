@@ -9,6 +9,7 @@ import SubmissionSupportCard from "@/components/shared/submissions/SubmissionSup
 import { getSubmissionTimeline } from "@/server/submissions/getSubmissionTimeline";
 import { getPagePublicId } from "@/server/auth/publicPageRoute";
 import SubmissionExportButtons from "@/components/student/submissions/SubmissionExportButtons";
+import { evaluateSubmissionRequirements } from "@/server/submissions/evaluateSubmissionRequirements";
 
 type SubmissionRow={id:number;status:string;submitted_at:string|null;updated_at:string|null;review_round:number;event_title:string;event_end_at:string|null;student_name:string;mssv:string;class_code:string};
 type CriteriaRow={code:string;title:string;description:string|null;group_code:string;group_title:string;min_required:number;required_count:number;evidence_type:string;is_required:number;auto_passed:number|null;auto_message:string|null;matched_activity_titles:string|null;content_text:string|null;file_count:number;review_decision:string|null};
@@ -59,6 +60,7 @@ export default async function AdminStudentSubmissionDetailPage({params}:{params:
   const reviews=(await db.rows(`SELECT r.round,r.decision,r.note,u.full_name reviewer_name FROM reviews r LEFT JOIN users u ON u.id=r.reviewer_id WHERE r.submission_id=? ORDER BY r.id`, [submissionId])) as ReviewRow[];
   const criteriaWithFiles=criteria.map(item=>({...item,evidence_files:files.filter(file=>file.criteria_code===item.code).map(file=>({id:Number(file.id),fileName:String(file.file_name??""),mimeType:String(file.mime_type??"")})),evidence_units:unitRows.filter(u=>u.criteria_code===item.code).map(u=>({id:Number(u.id),note:u.note,fileId:u.file_id?Number(u.file_id):null,fileName:u.file_name,reviewDecision:u.review_decision}))}));
   const achievedCriteria=criteria.filter(item=>Number(item.auto_passed)===1||item.review_decision==="pass").length;
+  const requirements = (await evaluateSubmissionRequirements(db, submissionId, "approved"));
   const reviewItems=reviews.map(item=>({round:Number(item.round),decision:String(item.decision??""),note:item.note?String(item.note):null,reviewerName:item.reviewer_name?String(item.reviewer_name):null}));
   const timeline=(await getSubmissionTimeline(submissionId));
   const exportToken=await getPagePublicId(db,`/api/submissions/${submission.id}/export`);
@@ -66,7 +68,7 @@ export default async function AdminStudentSubmissionDetailPage({params}:{params:
   return <main className="space-y-6">
     <ReviewHeader title={submission.event_title} subtitle={`${submission.student_name} - ${submission.mssv} - ${submission.class_code}`} backHref="/dashboard/admin/submissions"/>
     <SubmissionSupportCard submissionId={submissionId} isDraft={!submission.submitted_at}/>
-    {submission.submitted_at ? <SubmissionViewOverview status={submission.status} submittedAt={submission.submitted_at} updatedAt={submission.updated_at} closesAt={submission.event_end_at} currentRound={Number(submission.review_round??1)} achievedCriteria={achievedCriteria} totalCriteria={criteria.length}/> : null}
+    {submission.submitted_at ? <SubmissionViewOverview status={submission.status} submittedAt={submission.submitted_at} updatedAt={submission.updated_at} closesAt={submission.event_end_at} currentRound={Number(submission.review_round??1)} achievedCriteria={requirements.totalRequired > 0 ? requirements.effectiveAchieved : achievedCriteria} totalCriteria={requirements.totalRequired > 0 ? requirements.totalRequired : criteria.length}/> : null}
     {submission.submitted_at ? <ReviewHistory items={reviewItems} timeline={timeline}/> : null}
     <SubmissionCriteriaDetailList items={criteriaWithFiles} headerAction={exportToken?<SubmissionExportButtons url={`/api/submissions/${exportToken}/export`}/>:null}/>
   </main>;

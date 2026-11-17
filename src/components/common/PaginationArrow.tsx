@@ -25,5 +25,5 @@ export default function PaginationArrow({href,direction,disabled}:{href:string;d
     if (pending) return;
     shouldScroll.current = true;
     startTransition(() => router.push(href, { scroll: false }));
-  }} aria-label={label} aria-busy={pending} title={label} className={style+" text-slate-700 transition hover:bg-slate-100"}>{icon}</Link>}</span>;
+  }} aria-label={label} aria-busy={pending} className={style+" text-slate-700 transition hover:bg-slate-100"}>{icon}</Link>}</span>;
 }

@@ -18,7 +18,7 @@ type UserRow = {
   id: number;
   full_name: string;
   mssv: string;
-  cohort:number|null;
+  cohort: number | null;
   email: string | null;
   phone: string | null;
   gender: string | null;
@@ -31,7 +31,7 @@ type UserRow = {
 };
 
 type ClassOption = {
-  cohort?:number|null;
+  cohort?: number | null;
   id: number;
   code: string;
   name: string;
@@ -120,7 +120,7 @@ export default async function AdminUserDetailPage({
       ORDER BY code ASC, id ASC
       `, [])) as ClassOption[];
 
-  const transferClasses = (await getTransferClassOptions(db,user.id));
+  const transferClasses = (await getTransferClassOptions(db, user.id));
   const selectedClassIds = (await db.rows(`
       SELECT class_id
       FROM faculty_class_assignments
@@ -128,7 +128,7 @@ export default async function AdminUserDetailPage({
       ORDER BY class_id ASC
       `, [user.id]))
     .map((item) => Number((item as { class_id: number }).class_id));
-  const roles = (await db.rows(`SELECT role FROM user_role_assignments WHERE user_id=? ORDER BY FIELD(role,'student','class_officer','faculty_officer')`, [user.id]) as Array<{role:string}>).map((item) => item.role);
+  const roles = (await db.rows(`SELECT role FROM user_role_assignments WHERE user_id=? ORDER BY FIELD(role,'student','class_officer','faculty_officer')`, [user.id]) as Array<{ role: string }>).map((item) => item.role);
   const effectiveRoles = roles.length ? roles : [user.role];
 
   return (
@@ -144,8 +144,8 @@ export default async function AdminUserDetailPage({
 
           <Link
             href="/dashboard/admin/users"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-           data-back-link>
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            data-back-link>
             <ArrowLeft size={16} />
             Quay về
           </Link>
@@ -158,35 +158,35 @@ export default async function AdminUserDetailPage({
         </h2>
 
         <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-              <InfoItem label="Họ tên" value={user.full_name} />
-              <InfoItem label="MSSV / Mã cán bộ" value={user.mssv} />
-              <InfoItem label="Vai trò" value={roleLabels(effectiveRoles)} />
-              <div className="min-w-0 border-b border-slate-100 pb-3">
-                <div className="text-xs font-medium text-slate-500">Trạng thái</div>
-                <div className="mt-1">
-                  <span
-                    className={
-                      Number(user.is_active) === 1
-                        ? "inline-flex rounded-full border border-emerald-200 bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800"
-                        : "inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-0.5 text-xs font-semibold text-slate-600"
-                    }
-                  >
-                    {Number(user.is_active) === 1 ? "Đang hoạt động" : "Đã vô hiệu hóa"}
-                  </span>
-                </div>
-              </div>
-              <InfoItem label="Email" value={user.email} />
-              <InfoItem label="Số điện thoại" value={user.phone} />
-              <InfoItem label="Giới tính" value={user.gender} />
-              <InfoItem label="Ngày sinh" value={formatBirthDate(user.date_of_birth)} />
+          <InfoItem label="Họ tên" value={user.full_name} />
+          <InfoItem label="MSSV / Mã cán bộ" value={user.mssv} />
+          <InfoItem label="Vai trò" value={roleLabels(effectiveRoles)} />
+          <div className="min-w-0 border-b border-slate-100 pb-3">
+            <div className="text-xs font-medium text-slate-500">Trạng thái</div>
+            <div className="mt-1">
+              <span
+                className={
+                  Number(user.is_active) === 1
+                    ? "inline-flex rounded-full border border-emerald-200 bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800"
+                    : "inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-0.5 text-xs font-semibold text-slate-600"
+                }
+              >
+                {Number(user.is_active) === 1 ? "Đang hoạt động" : "Đã vô hiệu hóa"}
+              </span>
+            </div>
+          </div>
+          <InfoItem label="Email" value={user.email} />
+          <InfoItem label="Số điện thoại" value={user.phone} />
+          <InfoItem label="Giới tính" value={user.gender} />
+          <InfoItem label="Ngày sinh" value={formatBirthDate(user.date_of_birth)} />
         </div>
       </section>
 
       <section className="grid min-w-0 items-stretch gap-6 md:grid-cols-2">
-        <UserAccountAdminForm key={`${user.id}-${effectiveRoles.join("-")}-${user.is_active}`} userId={user.id} currentRoles={effectiveRoles} currentActive={Number(user.is_active) === 1}/>
-        <UserClassAdminForm userId={user.id} classes={transferClasses} currentClassId={user.class_id}/>
+        <UserAccountAdminForm key={`${user.id}-${effectiveRoles.join("-")}-${user.is_active}`} userId={user.id} currentRoles={effectiveRoles} currentActive={Number(user.is_active) === 1} />
+        <UserClassAdminForm userId={user.id} classes={transferClasses} currentClassId={user.class_id} />
       </section>
-      {effectiveRoles.includes('faculty_officer') ? <FacultyClassAssignmentForm facultyOfficerId={user.id} classes={classes} selectedClassIds={selectedClassIds}/> : null}
+      {effectiveRoles.includes('faculty_officer') ? <FacultyClassAssignmentForm facultyOfficerId={user.id} classes={classes} selectedClassIds={selectedClassIds} /> : null}
     </main>
   );
 }
@@ -206,18 +206,18 @@ function formatBirthDate(value: string | null) {
   const text = value.trim();
   // Birth dates are calendar dates; avoid timezone conversions or ambiguous US date parsing.
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/.exec(text);
-  if (iso) return iso[3].padStart(2,"0")+"/"+iso[2].padStart(2,"0")+"/"+iso[1];
+  if (iso) return iso[3].padStart(2, "0") + "/" + iso[2].padStart(2, "0") + "/" + iso[1];
   const local = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/.exec(text);
-  if (local) return local[1].padStart(2,"0")+"/"+local[2].padStart(2,"0")+"/"+local[3];
+  if (local) return local[1].padStart(2, "0") + "/" + local[2].padStart(2, "0") + "/" + local[3];
   // Older Excel imports stored the built-in US short-date display (m/d/yy).
   const legacyExcel = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec(text);
   if (legacyExcel) {
-    const month=Number(legacyExcel[1]), day=Number(legacyExcel[2]);
-    const shortYear=Number(legacyExcel[3]);
-    const year=(shortYear <= 29 ? 2000 : 1900)+shortYear;
-    const date=new Date(Date.UTC(year,month-1,day));
-    if (date.getUTCFullYear()===year && date.getUTCMonth()===month-1 && date.getUTCDate()===day)
-      return String(day).padStart(2,"0")+"/"+String(month).padStart(2,"0")+"/"+year;
+    const month = Number(legacyExcel[1]), day = Number(legacyExcel[2]);
+    const shortYear = Number(legacyExcel[3]);
+    const year = (shortYear <= 29 ? 2000 : 1900) + shortYear;
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day)
+      return String(day).padStart(2, "0") + "/" + String(month).padStart(2, "0") + "/" + year;
   }
   return text;
 }

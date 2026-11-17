@@ -21,7 +21,11 @@ export async function getSessionUser() {
   }
 
   const db = getDatabase();
-  await finalizeExpiredSubmissions(db);
+  try {
+    await finalizeExpiredSubmissions(db);
+  } catch (error) {
+    console.error("[getSessionUser] finalizeExpiredSubmissions failed:", error);
+  }
 
   const user = (await db.first(`
       SELECT

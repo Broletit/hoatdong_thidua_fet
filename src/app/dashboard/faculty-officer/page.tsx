@@ -199,13 +199,13 @@ export default async function FacultyOfficerDashboardPage({
     WHERE a.term_id=? AND a.audience_type='student' AND a.status IN ('published','closed')
   `, [term.id])) as { activities: number; registrations: number; attended: number };
   const activityComparison = (await db.rows(`
-    SELECT a.title AS label,
+    SELECT a.title AS label, a.start_at,
       COUNT(CASE WHEN ar.status != 'cancelled' THEN 1 END) AS registrations,
       COUNT(CASE WHEN ar.status = 'attended' THEN 1 END) AS attended
     FROM activities a
     LEFT JOIN activity_registrations ar ON ar.activity_id = a.id
     WHERE a.term_id = ? AND a.audience_type = 'student' AND a.status IN ('published','closed')
-    GROUP BY a.id, a.title
+    GROUP BY a.id, a.title, a.start_at
     ORDER BY attended DESC, registrations DESC, CAST(a.start_at AS DATETIME(3)) DESC
     LIMIT 10
   `, [term.id])) as Array<{ label: string; registrations: number; attended: number }>;

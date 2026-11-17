@@ -12,6 +12,7 @@ import {
 export type LoginActionState = {
   ok: boolean;
   message: string;
+  redirectTo?: string;
 };
 
 type DbUser = {
@@ -79,5 +80,9 @@ export async function loginAction(
     loginContext,
   });
 
-  redirect(getDefaultRouteByRoleContext(loginContext));
+  return {
+    ok: true,
+    message: "Đăng nhập thành công.",
+    redirectTo: getDefaultRouteByRoleContext(loginContext),
+  };
 }

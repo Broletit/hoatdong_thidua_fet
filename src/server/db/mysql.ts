@@ -11,8 +11,9 @@ const globalDb = globalThis as typeof globalThis & { meritTrackPool?: Pool };
 
 export function getPool() {
   if (!globalDb.meritTrackPool) {
-    const required = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"] as const;
+    const required = ["DB_HOST", "DB_NAME", "DB_USER"] as const;
     for (const key of required) if (!process.env[key]) throw new Error(`Missing MySQL configuration: ${key}`);
+    if (process.env.DB_PASSWORD === undefined) throw new Error("Missing MySQL configuration: DB_PASSWORD");
     const port = Number(process.env.DB_PORT || 3306);
     const limit = Number(process.env.DB_CONNECTION_LIMIT || 10);
     if (!Number.isInteger(port) || port < 1 || port > 65535 || !Number.isInteger(limit) || limit < 1) throw new Error("Invalid MySQL port or connection limit.");
