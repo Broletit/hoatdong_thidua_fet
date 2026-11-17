@@ -6,6 +6,7 @@ import CriteriaGroupsPagination from "@/components/shared/criteria/CriteriaGroup
 import useConfirmation from "@/components/shared/useConfirmation";
 
 import { useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { scrollToTable } from "@/lib/ui/scrollToTable";
 import { deleteCriteriaGroup } from "@/server/actions/criteria-templates/deleteCriteriaGroup";
 import { deleteCriteriaItem } from "@/server/actions/criteria-templates/deleteCriteriaItem";
 import ActionFeedback from "@/components/shared/ActionFeedback";
@@ -62,10 +63,9 @@ export default function CriteriaTemplateStructureTable({
     if (!changedCode) return;
     const group = Array.from(structureRef.current?.querySelectorAll<HTMLElement>("[data-criteria-group-code]") ?? [])
       .find(element => element.dataset.criteriaGroupCode === changedCode);
-    group?.scrollIntoView({
-      block: "start",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
-    });
+    if (group) {
+      scrollToTable(group);
+    }
   }, [criteriaPages]);
 
   async function handleDeleteGroup(group: CriteriaTemplateGroupItem) {

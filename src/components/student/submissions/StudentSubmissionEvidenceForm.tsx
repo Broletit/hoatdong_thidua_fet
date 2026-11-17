@@ -15,6 +15,7 @@ import { getUserFacingActionError } from "@/lib/errors/getUserFacingActionError"
 import CriteriaGroupsPagination from "@/components/shared/criteria/CriteriaGroupsPagination";
 import Link from "next/link";
 import TableResultsFooter from "@/components/common/TableResultsFooter";
+import { scrollToTable } from "@/lib/ui/scrollToTable";
 
 export type EvidenceUnitItem = {
   id: number;
@@ -66,7 +67,7 @@ function CriteriaItemPager({items,externalPage,children}:{items:CriteriaItem[];e
   useLayoutEffect(()=>{
     if(previousPage.current===current)return;
     previousPage.current=current;
-    top.current?.scrollIntoView({block:"start",behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
+    scrollToTable(top.current?.parentElement ?? top.current);
   },[current]);
   return <><span ref={top} className="block scroll-mt-4"/>{items.map((item,index)=><div key={item.code} hidden={index<start||index>=start+5}>{children(item)}</div>)}{items.length>5?<TableResultsFooter totalResults={items.length} resultLabel="tiêu chí"><button type="button" onClick={()=>setPage(value=>Math.max(1,value-1))} disabled={current===1} className="px-3 disabled:text-slate-300">‹</button><span className="text-sm text-slate-500">Trang {current}/{totalPages}</span><button type="button" onClick={()=>setPage(value=>Math.min(totalPages,value+1))} disabled={current===totalPages} className="px-3 disabled:text-slate-300">›</button></TableResultsFooter>:null}</>;
 }

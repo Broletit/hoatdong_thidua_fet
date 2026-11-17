@@ -1,4 +1,3 @@
-import nodemailer, { type Transporter } from "nodemailer";
 import { randomUUID } from "node:crypto";
 import { getDatabase } from "@/server/db/mysql";
 import type { EmailMessage, EmailProvider, EmailSendResult } from "./types";
@@ -14,71 +13,56 @@ class ConsoleEmailProvider implements EmailProvider {
   }
 }
 
-class SmtpEmailProvider implements EmailProvider {
-  private transporter?: Transporter;
-
-  private settings() {
-    const host = process.env.SMTP_HOST?.trim() || "";
-    const port = Number(process.env.SMTP_PORT?.trim() || "465");
-    const secure = process.env.SMTP_SECURE
-      ? process.env.SMTP_SECURE.toLowerCase() === "true"
-      : port === 465;
-    const user = process.env.SMTP_USER?.trim() || "";
-    const pass = process.env.SMTP_PASS?.trim() || "";
-    const from = process.env.EMAIL_FROM?.trim() || user;
-
-    if (!host || !user || !pass) {
+class ResendEmailProvider implements EmailProvider {
+  async send(message: EmailMessage): Promise<EmailSendResult> {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    if (!apiKey) {
       throw new Error(
-        "Chưa cấu hình đầy đủ SMTP mail tổ chức. Vui lòng thiết lập SMTP_HOST, SMTP_USER và SMTP_PASS trong file cấu hình môi trường (.env)."
+        "Chưa cấu hình RESEND_API_KEY trong file môi trường (.env). Vui lòng thêm khóa RESEND_API_KEY=re_... để gửi mail qua Resend."
       );
     }
 
-    return { host, port, secure, user, pass, from };
-  }
+    const defaultFrom = process.env.EMAIL_FROM?.trim() || "IUH <noreply@tuoitrefetiuh.com>";
+    const from = message.from?.trim() || defaultFrom;
 
-  private getTransporter(): Transporter {
-    if (!this.transporter) {
-      const { host, port, secure, user, pass } = this.settings();
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure,
-        auth: {
-          user,
-          pass,
-        },
-        tls: {
-          rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED === "false" ? false : true,
-        },
-      });
-    }
-    return this.transporter;
-  }
-
-  async send(message: EmailMessage): Promise<EmailSendResult> {
-    const { from } = this.settings();
-    const transporter = this.getTransporter();
-
-    const info = await transporter.sendMail({
-      from: message.from || from,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: Array.isArray(message.to) ? message.to : [message.to],
+        subject: message.subject,
+        html: message.html || undefined,
+        text: message.text || undefined,
+      }),
     });
 
+    const data = (await response.json().catch(() => null)) as {
+      id?: string;
+      message?: string;
+      name?: string;
+    } | null;
+
+    if (!response.ok) {
+      const errorDetail = data?.message || `Mã lỗi HTTP ${response.status}`;
+      throw new Error(`Gửi email qua Resend API thất bại: ${errorDetail}`);
+    }
+
     return {
-      providerMessageId: info.messageId || `smtp_${randomUUID()}`,
+      providerMessageId: data?.id || `resend_${randomUUID()}`,
       status: "sent",
     };
   }
 }
 
 function provider(): EmailProvider {
-  const kind = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+  const kind = (process.env.EMAIL_PROVIDER || "resend").trim().toLowerCase();
   if (kind === "console") return new ConsoleEmailProvider();
-  if (kind === "smtp") return new SmtpEmailProvider();
-  throw new Error("EMAIL_PROVIDER phải là 'smtp' hoặc 'console'.");
+  if (kind === "resend") return new ResendEmailProvider();
+  throw new Error("EMAIL_PROVIDER phải là 'resend' hoặc 'console'.");
 }
 
 export async function sendEmail(message: EmailMessage) {

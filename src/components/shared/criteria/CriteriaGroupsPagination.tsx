@@ -18,7 +18,8 @@ export default function CriteriaGroupsPagination({ children, className = "", tot
   useLayoutEffect(() => {
     if (page === previousPage.current) return;
     previousPage.current = page;
-    scrollToTable(container.current);
+    const target = container.current?.closest("section") ?? container.current;
+    scrollToTable(target);
   }, [page]);
   const start = (page - 1) * GROUPS_PER_PAGE;
   function changePage(next: number) {

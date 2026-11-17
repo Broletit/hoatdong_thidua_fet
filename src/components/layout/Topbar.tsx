@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, LogOut, KeyRound, UserRound, Shuffle, LoaderCircle } from "lucide-react";
+import { Bell, ChevronDown, LogOut, KeyRound, UserRound, Shuffle, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logoutAction } from "@/app/(auth)/logout/actions";
 import { switchLoginContext } from "@/server/actions/auth/switchLoginContext";
@@ -157,19 +157,21 @@ export default function Topbar({
           {roleLabel}
         </span>
 
-        <div className="flex items-center gap-1 rounded-2xl bg-white px-1 py-1 sm:gap-3 sm:px-3 sm:py-2 shadow-[0_8px_24px_rgba(15,23,42,0.10)] shadow-slate-200/60">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-900 text-sm font-semibold text-white">
-            {fullName?.charAt(0)?.toUpperCase() || "U"}
-          </div>
-
+        <div className="flex items-center rounded-2xl bg-white p-1 sm:px-2 sm:py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.10)] shadow-slate-200/60">
           <button
             type="button"
             onClick={() => setOpen((prev) => !prev)}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100"
+            className="flex items-center gap-1.5 rounded-xl px-1.5 py-1 text-slate-600 transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600"
             aria-expanded={open}
             aria-label="Mở menu tài khoản"
           >
-            <Menu size={18} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-900 text-sm font-semibold text-white shadow-xs">
+              {fullName?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+            <ChevronDown
+              size={18}
+              className={`text-slate-500 transition-transform duration-200 ${open ? "rotate-180 text-blue-700" : ""}`}
+            />
           </button>
         </div>
 

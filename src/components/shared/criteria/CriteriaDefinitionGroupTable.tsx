@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import CriteriaTable from "./CriteriaTable";
 import ExpandableText from "@/components/common/ExpandableText";
+import { scrollToTable } from "@/lib/ui/scrollToTable";
 
 export type CriteriaDefinitionItem = {
   code: string;
@@ -26,10 +27,8 @@ export default function CriteriaDefinitionGroupTable({ items, officer }: { items
   useLayoutEffect(() => {
     if (page === previousPage.current) return;
     previousPage.current = page;
-    tableStart.current?.scrollIntoView({
-      block: "start",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
-    });
+    const header = tableStart.current?.previousElementSibling as HTMLElement | null;
+    scrollToTable(header ?? tableStart.current);
   }, [page]);
   const visibleItems = items.slice((page - 1) * pageSize, page * pageSize);
   const tableWidth = officer ? "82rem" : "76rem";
