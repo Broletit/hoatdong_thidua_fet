@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const MINIMUM_VISIBLE_MS = 350;
-const INTERACTION_DURATION_MS = 650;
+const MINIMUM_VISIBLE_MS = 250;
+const INTERACTION_DURATION_MS = 600;
 const MAXIMUM_VISIBLE_MS = 15_000;
 
 export default function GlobalInteractionLoading() {
@@ -37,6 +37,14 @@ export default function GlobalInteractionLoading() {
       }, remaining);
     }
 
+    function handleTransitionStart() {
+      start(30_000);
+    }
+
+    function handleTransitionStop() {
+      stop();
+    }
+
     function handleClick(event: MouseEvent) {
       if (event.defaultPrevented || event.button !== 0) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -50,7 +58,11 @@ export default function GlobalInteractionLoading() {
         if (control.target === "_blank" || control.hasAttribute("download")) return;
         const destination = new URL(control.href, window.location.href);
         if (destination.origin !== window.location.origin) return;
-        if (destination.href === window.location.href || destination.hash && destination.pathname === window.location.pathname && destination.search === window.location.search) return;
+        if (
+          destination.href === window.location.href ||
+          (destination.hash && destination.pathname === window.location.pathname && destination.search === window.location.search)
+        )
+          return;
 
         const currentUrl = window.location.href;
         start();
@@ -63,15 +75,9 @@ export default function GlobalInteractionLoading() {
         window.setTimeout(() => window.clearInterval(watcher), MAXIMUM_VISIBLE_MS);
         return;
       }
-
-      // Các nút chỉ mở/đóng giao diện (menu, modal, accordion...) phản hồi
-      // ngay tại client nên không hiển thị thanh tải. Tác vụ bất đồng bộ dùng
-      // ActionFeedback; nút submit được xử lý bởi sự kiện submit bên dưới.
     }
 
     function handleSubmit() {
-      // Server-action forms already keep ActionFeedback visible for their
-      // complete pending state; this guarantees an immediate first response.
       start(INTERACTION_DURATION_MS);
     }
 
@@ -83,6 +89,8 @@ export default function GlobalInteractionLoading() {
     document.addEventListener("submit", handleSubmit, true);
     window.addEventListener("pageshow", handlePageReady);
     window.addEventListener("popstate", handlePageReady);
+    window.addEventListener("app:transition", handleTransitionStart);
+    window.addEventListener("app:transition:stop", handleTransitionStop);
 
     return () => {
       clearTimers();
@@ -90,6 +98,8 @@ export default function GlobalInteractionLoading() {
       document.removeEventListener("submit", handleSubmit, true);
       window.removeEventListener("pageshow", handlePageReady);
       window.removeEventListener("popstate", handlePageReady);
+      window.removeEventListener("app:transition", handleTransitionStart);
+      window.removeEventListener("app:transition:stop", handleTransitionStop);
     };
   }, []);
 
@@ -97,11 +107,26 @@ export default function GlobalInteractionLoading() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-[10000] h-[3px] overflow-hidden bg-sky-100/90 shadow-[0_1px_6px_rgba(14,165,233,0.3)]"
+      className="pointer-events-none fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/15 transition-opacity duration-200"
       role="status"
-      aria-label="Đang xử lý"
+      aria-label="Đang tải dữ liệu"
     >
-      <div className="top-loading-gradient h-full w-[38%]" />
+      <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white/95 shadow-2xl shadow-blue-950/20 ring-1 ring-slate-200/90">
+        {/* Vòng xoay xanh dương thanh thoát */}
+        <div
+          className="absolute inset-2 rounded-full border-2 border-slate-100 border-t-blue-600 border-r-blue-500 animate-spin"
+          style={{ animationDuration: "0.85s" }}
+        />
+
+        {/* Vòng phụ sắc vàng đảo chiều nhẹ nhàng */}
+        <div
+          className="absolute inset-3.5 rounded-full border-2 border-transparent border-b-amber-400 border-l-amber-300 animate-spin"
+          style={{ animationDirection: "reverse", animationDuration: "1.2s" }}
+        />
+
+        {/* Điểm nhấn tâm sáng */}
+        <div className="h-1.5 w-1.5 rounded-full bg-blue-600 shadow-[0_0_6px_#2563eb]" />
+      </div>
     </div>
   );
 }

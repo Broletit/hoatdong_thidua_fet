@@ -46,6 +46,19 @@
   animation: floatLight2 20s ease-in-out infinite alternate;
 }
 
+.ambientLight3 {
+  position: absolute;
+  top: 30%;
+  left: 28%;
+  width: 28rem;
+  height: 28rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.15) 0%, transparent 65%);
+  filter: blur(55px);
+  pointer-events: none;
+  animation: floatLight3 16s ease-in-out infinite alternate;
+}
+
 @keyframes floatLight1 {
   0% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(40px, -30px) scale(1.1); }
@@ -56,6 +69,12 @@
   0% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(-40px, 35px) scale(1.08); }
   100% { transform: translate(30px, -20px) scale(0.92); }
+}
+
+@keyframes floatLight3 {
+  0% { transform: translate(0, 0) scale(0.9); }
+  50% { transform: translate(35px, 25px) scale(1.15); }
+  100% { transform: translate(-25px, -20px) scale(0.95); }
 }
 
 /* Hiệu ứng luồng ánh sáng quét qua tiêu đề chậm rãi */
@@ -196,6 +215,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .appear, .frame, .frame::before, .halo, .navyBg, .ambientLight1, .ambientLight2, .shimmerTitle { animation: none; }
+  .appear, .frame, .frame::before, .halo, .navyBg, .ambientLight1, .ambientLight2, .ambientLight3, .shimmerTitle { animation: none; }
   .submit, .submit::after { transition: none; }
 }

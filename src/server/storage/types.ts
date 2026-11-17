@@ -7,4 +7,5 @@ export interface StorageProvider {
   head(key: string): Promise<ObjectMetadata>;
   read(key: string): Promise<StoredObject>;
   delete(key: string): Promise<void>;
+  getDirectUrl?(key: string): Promise<string>;
 }

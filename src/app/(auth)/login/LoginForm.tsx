@@ -8,6 +8,7 @@ import { useActionState, useEffect, useState } from "react";
 import { Eye, EyeOff, LoaderCircle, LockKeyhole, LogIn, UserRound } from "lucide-react";
 import { loginAction, type LoginActionState } from "./actions";
 import ActionFeedback from "@/components/shared/ActionFeedback";
+import { triggerAppTransition, hideAppTransition } from "@/lib/events/appTransition";
 
 const initialState: LoginActionState = {
   ok: false,
@@ -23,9 +24,12 @@ export default function LoginForm() {
 
   useEffect(() => {
     if (state.ok && state.redirectTo) {
+      triggerAppTransition();
       window.location.assign(state.redirectTo);
+    } else if (!state.ok && state.message) {
+      hideAppTransition();
     }
-  }, [state.ok, state.redirectTo]);
+  }, [state.ok, state.redirectTo, state.message]);
 
   const isSubmitting = pending || (state.ok && Boolean(state.redirectTo));
 
@@ -41,7 +45,7 @@ export default function LoginForm() {
         <div className="group relative">
           <UserRound
             size={16}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-700"
+            className="pointer-events-none absolute left-3.5 top-[22px] -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-700"
           />
           <input
             id="login-mssv"
@@ -63,7 +67,7 @@ export default function LoginForm() {
         <div className="group relative">
           <LockKeyhole
             size={16}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-700"
+            className="pointer-events-none absolute left-3.5 top-[22px] -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-700"
           />
           <input
             id="login-password"
@@ -79,7 +83,7 @@ export default function LoginForm() {
             onClick={() => setShowPassword(value => !value)}
             aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
             aria-pressed={showPassword}
-            className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600"
+            className="absolute right-1 top-[22px] flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600"
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>

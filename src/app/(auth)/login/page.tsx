@@ -16,10 +16,11 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className={`relative flex min-h-[calc(100vh-3.5rem)] items-center justify-center overflow-hidden ${styles.navyBg}`}>
+    <main className={`relative flex min-h-screen items-center justify-center overflow-hidden ${styles.navyBg}`}>
       {/* Moving ambient lighting orbs */}
       <div aria-hidden="true" className={styles.ambientLight1} />
       <div aria-hidden="true" className={styles.ambientLight2} />
+      <div aria-hidden="true" className={styles.ambientLight3} />
 
       {/* Subtle modern tech grid */}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size opacity-25" />

@@ -31,9 +31,9 @@ export default function FormUxGuard() {
           error = document.createElement("p");
           error.dataset.fieldError = "true";
           error.className = "mt-1 whitespace-normal text-xs font-medium leading-5 text-rose-700 break-words";
-          const row = field.parentElement;
-          if (row && getComputedStyle(row).display.includes("flex") && getComputedStyle(row).flexDirection === "row") {
-            row.insertAdjacentElement("afterend", error);
+          const container = field.closest(".group.relative") || field.closest(".relative") || field.parentElement;
+          if (container && (container.classList.contains("relative") || getComputedStyle(container).display.includes("flex") || getComputedStyle(container).position === "relative")) {
+            container.insertAdjacentElement("afterend", error);
           } else {
             field.insertAdjacentElement("afterend", error);
           }

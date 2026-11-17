@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, LogOut, KeyRound, UserRound, Shuffle } from "lucide-react";
+import { Bell, Menu, LogOut, KeyRound, UserRound, Shuffle, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logoutAction } from "@/app/(auth)/logout/actions";
 import { switchLoginContext } from "@/server/actions/auth/switchLoginContext";
@@ -13,6 +13,7 @@ import {
 } from "@/server/auth/role-context";
 import ActionFeedback from "@/components/shared/ActionFeedback";
 import MobileNavigation from "./MobileNavigation";
+import { triggerAppTransition, hideAppTransition } from "@/lib/events/appTransition";
 
 function getProfileHref(loginContext: string) {
   if (loginContext === "class_officer") return "/dashboard/class-officer/profile";
@@ -76,12 +77,16 @@ export default function Topbar({
   }, [pathname]);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [switchingContext, setSwitchingContext] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const contexts = getAvailableLoginContexts(roles?.length ? roles : role);
   const canSwitch = contexts.length > 1;
 
   function handleLogout() {
+    setIsLoggingOut(true);
+    triggerAppTransition();
     startTransition(async () => {
       try {
         const result = await logoutAction();
@@ -93,12 +98,16 @@ export default function Topbar({
   }
 
   function handleSwitch(nextContext: LoginRoleContext) {
+    setSwitchingContext(nextContext);
+    triggerAppTransition();
     startTransition(async () => {
       try {
         const formData = new FormData();
         formData.set("loginContext", nextContext);
         const result = await switchLoginContext(formData);
         if (!result.ok) {
+          hideAppTransition();
+          setSwitchingContext(null);
           if (result.redirectTo) {
             window.location.assign(result.redirectTo);
             return;
@@ -111,6 +120,8 @@ export default function Topbar({
           window.location.assign(result.redirectTo);
         }
       } catch (caught) {
+        hideAppTransition();
+        setSwitchingContext(null);
         setError(caught instanceof Error ? caught.message : "Không thể chuyển giao diện.");
       }
     });
@@ -187,13 +198,20 @@ export default function Topbar({
                     <button
                       key={context}
                       type="button"
-                      disabled={pending || context === loginContext}
+                      disabled={pending || isLoggingOut || Boolean(switchingContext) || context === loginContext}
                       onClick={() => handleSwitch(context)}
                       className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 disabled:bg-blue-50 disabled:text-blue-700"
                     >
-                      <span>{getUiLabelByLoginContext(context)}</span>
+                      <span className="flex items-center gap-2">
+                        {switchingContext === context ? (
+                          <LoaderCircle size={14} className="animate-spin text-blue-700" />
+                        ) : null}
+                        <span>{getUiLabelByLoginContext(context)}</span>
+                      </span>
                       {context === loginContext ? (
                         <span className="text-xs font-semibold">Đang dùng</span>
+                      ) : switchingContext === context ? (
+                        <span className="text-xs font-medium text-blue-600">Đang chuyển...</span>
                       ) : null}
                     </button>
                   ))}
@@ -212,11 +230,15 @@ export default function Topbar({
               <button
                 type="button"
                 onClick={handleLogout}
-                disabled={pending}
+                disabled={pending || isLoggingOut}
                 className="flex items-center gap-2 px-4 py-3 text-left text-sm text-red-600 transition hover:bg-red-50 disabled:opacity-60"
               >
-                <LogOut size={16} />
-                <span>{pending ? "Đang đăng xuất..." : "Đăng xuất"}</span>
+                {isLoggingOut ? (
+                  <LoaderCircle size={16} className="animate-spin text-red-600" />
+                ) : (
+                  <LogOut size={16} />
+                )}
+                <span>{isLoggingOut ? "Đang đăng xuất..." : "Đăng xuất"}</span>
               </button>
             </div>
           </div>

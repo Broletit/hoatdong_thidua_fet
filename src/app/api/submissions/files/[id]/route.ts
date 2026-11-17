@@ -22,6 +22,24 @@ export async function GET(_: Request, context: {params:Promise<{id:string}>}) {
   if (!file) return NextResponse.json({message:"Không tìm thấy tệp."}, {status:404});
   if (!await canReadSubmissionFile(getDatabase(), user, file)) return NextResponse.json({message:"Bạn không có quyền xem tệp này."}, {status:403});
   const provider = getStorageProvider(file.storage_provider);
+
+  // Nếu lưu trữ bằng OneDrive, chuyển hướng 302 trực tiếp sang URL phát xuất từ OneDrive/Microsoft CDN
+  if (typeof provider.getDirectUrl === "function") {
+    try {
+      const directUrl = await provider.getDirectUrl(file.object_key);
+      if (directUrl) {
+        return NextResponse.redirect(directUrl, {
+          status: 302,
+          headers: {
+            "Cache-Control": "private, no-cache, no-store, max-age=0, must-revalidate",
+          },
+        });
+      }
+    } catch (directErr) {
+      console.warn("[Storage] Direct URL redirect failed, falling back to stream:", directErr);
+    }
+  }
+
   try {
     const object = await provider.read(file.object_key);
     return new NextResponse(object.stream, {headers:{

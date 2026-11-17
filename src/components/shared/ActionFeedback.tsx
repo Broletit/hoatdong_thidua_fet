@@ -18,11 +18,5 @@ export default function ActionFeedback({pending=false,message="",ok=false,neutra
     }
   },[feedbackId,message,neutral,ok,pending,colored]);
 
-  if(!pending||typeof document==="undefined")return null;
-  return createPortal(
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-[9999] h-[3px] overflow-hidden bg-sky-100/90 shadow-[0_1px_6px_rgba(14,165,233,0.3)]" role="status" aria-label="Đang xử lý">
-      <div className="top-loading-gradient h-full w-[38%]" />
-    </div>,
-    document.body,
-  );
+  return null;
 }
