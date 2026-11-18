@@ -5,7 +5,8 @@ import { detailPagePattern, detailApiPattern, getPagePublicId, resolvePagePublic
 import { validateApiRequest } from "@/server/auth/apiRequestGuard";
 
 export async function proxy(request: NextRequest) {
-  const pathname = request.nextUrl.pathname;
+  try {
+    const pathname = request.nextUrl.pathname;
 
   // Kiểm tra chế độ bảo trì hệ thống
   const isMaintenance = process.env.MAINTENANCE_MODE === "true";
@@ -29,11 +30,18 @@ export async function proxy(request: NextRequest) {
           { status: 503 }
         );
       }
-      return NextResponse.redirect(new URL("/maintenance", request.url));
+      // Dùng rewrite để render trực tiếp trang bảo trì thay vì redirect 302,
+      // giúp tránh lỗi Apache ProxyErrorOverride / lệch Host reverse proxy trên cPanel
+      const maintenanceUrl = request.nextUrl.clone();
+      maintenanceUrl.pathname = "/maintenance";
+      maintenanceUrl.search = "";
+      return NextResponse.rewrite(maintenanceUrl);
     }
 
     if (hasBypass && bypassParam) {
-      const res = NextResponse.redirect(new URL(pathname, request.url));
+      const bypassUrl = request.nextUrl.clone();
+      bypassUrl.searchParams.delete("bypass");
+      const res = NextResponse.redirect(bypassUrl, 302);
       res.cookies.set("maintenance_bypass", "1", { httpOnly: true, sameSite: "lax", maxAge: 86400 });
       return res;
     }
@@ -98,6 +106,10 @@ export async function proxy(request: NextRequest) {
   const destination = request.nextUrl.clone();
   destination.pathname = `/dashboard/${context.replaceAll("_","-")}/${publicRoute[1] === "o" ? "officer-activities" : "activities"}/${activity.activity_id}${publicRoute[3] ?? ""}`;
   return NextResponse.rewrite(destination);
+  } catch (err) {
+    console.error("[Proxy Fatal Error]:", err);
+    return NextResponse.next();
+  }
 }
 
 export const config = {

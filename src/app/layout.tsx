@@ -4,11 +4,19 @@ import AppToaster from "@/components/shared/AppToaster";
 import FormUxGuard from "@/components/shared/FormUxGuard";
 import GlobalInteractionLoading from "@/components/shared/GlobalInteractionLoading";
 
+function resolveMetadataBase(): URL {
+  try {
+    const raw = process.env.APP_BASE_URL?.trim();
+    if (raw) {
+      const formatted = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
+      return new URL(formatted);
+    }
+  } catch {}
+  return new URL(process.env.NODE_ENV === "production" ? "https://thidua.tuoitrefetiuh.com" : "http://localhost:3000");
+}
+
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.APP_BASE_URL ||
-    (process.env.NODE_ENV === "production" ? "https://thidua.tuoitrefetiuh.com" : "http://localhost:3000")
-  ),
+  metadataBase: resolveMetadataBase(),
   title: "Hệ thống thi đua FET",
   description: "HỆ THỐNG QUẢN LÝ HOẠT ĐỘNG VÀ XÉT THI ĐUA - KHEN THƯỞNG - Khoa Công nghệ Điện tử - Trường Đại học Công nghiệp TP. Hồ Chí Minh",
   icons: {
