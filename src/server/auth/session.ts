@@ -9,7 +9,8 @@ export type SessionPayload = {
   loginContext: LoginRoleContext;
 };
 
-const SESSION_COOKIE = "merit_track_session";
+const SESSION_COOKIE = "thiduafet_session";
+const LEGACY_SESSION_COOKIE = "merit_track_session";
 // Persistent login is deliberately limited to one day. The database expiry and
 // the HttpOnly cookie use the same value, so an expired browser cookie cannot
 // revive a server-side session.
@@ -45,7 +46,7 @@ export async function createSession(payload: SessionPayload) {
 
 export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
+  const sessionId = cookieStore.get(SESSION_COOKIE)?.value ?? cookieStore.get(LEGACY_SESSION_COOKIE)?.value;
 
   if (!sessionId) return null;
 
@@ -73,7 +74,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 
 export async function updateSessionLoginContext(loginContext: LoginRoleContext) {
   const cookieStore = await cookies();
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
+  const sessionId = cookieStore.get(SESSION_COOKIE)?.value ?? cookieStore.get(LEGACY_SESSION_COOKIE)?.value;
 
   if (!sessionId) return null;
 
@@ -91,18 +92,20 @@ export async function updateSessionLoginContext(loginContext: LoginRoleContext) 
 
 export async function revokeCurrentSession() {
   const cookieStore = await cookies();
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
+  const sessionId = cookieStore.get(SESSION_COOKIE)?.value ?? cookieStore.get(LEGACY_SESSION_COOKIE)?.value;
 
   if (sessionId) {
     (await getDatabase().execute(`UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND revoked_at IS NULL`, [sessionId]));
   }
 
-  cookieStore.set(SESSION_COOKIE, "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 0,
-  });
-  cookieStore.delete(SESSION_COOKIE);
+  for (const name of [SESSION_COOKIE, LEGACY_SESSION_COOKIE]) {
+    cookieStore.set(name, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    cookieStore.delete(name);
+  }
 }

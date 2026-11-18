@@ -28,13 +28,30 @@ export default async function LoginPage() {
       <section className="relative z-10 mx-auto grid min-h-full w-full max-w-6xl items-center gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-12 xl:gap-16 lg:px-8">
         {/* Left column: Branding & Title */}
         <div className="flex flex-col justify-center text-white">
-          <div className="w-fit">
+          {/* Bộ logo: logotrang -> logodoan -> logohoi nằm chung hàng với độ cao đồng đều */}
+          <div className="flex items-center gap-3 sm:gap-4 md:gap-5 flex-nowrap">
             <Image
               src="/logotrang.png"
-              alt="Logo Khoa Công nghệ Điện tử"
+              alt="Logo Khoa Công nghệ Điện tử - IUH"
               width={3088}
               height={520}
-              className="h-12 w-auto max-w-full object-contain object-left sm:h-14"
+              className="h-11 w-auto max-w-[190px] sm:max-w-none sm:h-13 md:h-14 object-contain object-left shrink-0"
+              priority
+            />
+            <Image
+              src="/logodoan.png"
+              alt="Huy hiệu Đoàn TNCS Hồ Chí Minh"
+              width={2508}
+              height={2755}
+              className="h-9 w-auto sm:h-10.5 md:h-11.5 object-contain shrink-0"
+              priority
+            />
+            <Image
+              src="/logohoi.png"
+              alt="Biểu trưng Hội Sinh viên Việt Nam"
+              width={1403}
+              height={1414}
+              className="h-9 w-auto sm:h-10.5 md:h-11.5 object-contain shrink-0"
               priority
             />
           </div>

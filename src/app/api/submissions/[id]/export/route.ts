@@ -207,8 +207,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     criteria,
   });
 
-  const utf8Name = `SV5T_${mssv}_${submission.full_name.trim()}.docx`.replace(/[/\\?%*:|"<>]/g, "_");
-  const asciiName = `SV5T_${sanitizeAsciiFilePart(mssv)}_${sanitizeAsciiFilePart(submission.full_name) || "HoSo"}.docx`;
+  const utf8Name = `baocaothanhtich_SV5T_${mssv}_${submission.full_name.trim()}.docx`.replace(/[/\\?%*:|"<>]/g, "_");
+  const asciiName = `baocaothanhtich_SV5T_${sanitizeAsciiFilePart(mssv)}_${sanitizeAsciiFilePart(submission.full_name) || "HoSo"}.docx`;
 
   return new NextResponse(new Uint8Array(docxBuffer), {
     status: 200,

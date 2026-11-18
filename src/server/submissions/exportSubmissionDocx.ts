@@ -9,7 +9,7 @@ const TEMPLATE_PATH = path.join(
   process.cwd(),
   "public",
   "templates",
-  "1. Mẫu báo cáo thành tích SV5T cấp trường 2026.docx",
+  "mau_baocaothanhtich_SV5T_captruong_2026.docx",
 );
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -106,17 +106,24 @@ function getParagraphText(p: XmlElement): string {
 }
 
 function replaceParagraphTextPreservingStyle(doc: XmlDocument, p: XmlElement, newText: string) {
-  const runs: XmlElement[] = [];
+  const textRuns: XmlElement[] = [];
   for (let i = 0; i < p.childNodes.length; i++) {
     const child = p.childNodes[i];
     if (child.nodeType === 1 && (child as unknown as XmlElement).tagName === "w:r") {
-      runs.push(child as unknown as XmlElement);
+      const r = child as unknown as XmlElement;
+      const hasDrawing =
+        r.getElementsByTagName("w:drawing").length > 0 ||
+        r.getElementsByTagName("w:pict").length > 0 ||
+        r.getElementsByTagName("mc:AlternateContent").length > 0;
+      if (!hasDrawing) {
+        textRuns.push(r);
+      }
     }
   }
 
   let templateRPr: XmlElement | null = null;
-  if (runs.length > 0) {
-    const rPrList = runs[0].getElementsByTagName("w:rPr");
+  if (textRuns.length > 0) {
+    const rPrList = textRuns[0].getElementsByTagName("w:rPr");
     if (rPrList.length > 0) {
       templateRPr = rPrList[0].cloneNode(true) as XmlElement;
     }
@@ -130,7 +137,7 @@ function replaceParagraphTextPreservingStyle(doc: XmlDocument, p: XmlElement, ne
     }
   }
 
-  for (const r of runs) {
+  for (const r of textRuns) {
     p.removeChild(r);
   }
 
@@ -612,26 +619,26 @@ export async function buildSubmissionDocx(params: {
 
   for (const p of allParagraphs) {
     const raw = getParagraphText(p).trim();
-    if (raw.startsWith("Thành phố Hồ Chí Minh, ngày ")) {
+    if (raw.startsWith("Thành phố Hồ Chí Minh, ngày ") || raw.includes("Thành phố Hồ Chí Minh, ngày")) {
       replaceParagraphTextPreservingStyle(
         doc,
         p,
         `Thành phố Hồ Chí Minh, ngày ${exportDay} tháng ${exportMonth} năm ${exportYear}`,
       );
-    } else if (raw.startsWith("Họ và tên:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `Họ và tên: ${student.fullName.toUpperCase()}`);
-    } else if (raw.startsWith("MSSV:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `MSSV: ${student.mssv}`);
-    } else if (raw.startsWith("Sinh viên năm thứ:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `Sinh viên năm thứ: ${student.studentYear}`);
-    } else if (raw.startsWith("Lớp - Khoa:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `Lớp - Khoa: ${student.classAndFaculty}`);
-    } else if (raw.startsWith("Chức vụ Đoàn, Hội:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `Chức vụ Đoàn, Hội: ${student.unionPosition}`);
-    } else if (raw.startsWith("Số điện thoại:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `Số điện thoại: ${student.phone}`);
-    } else if (raw.startsWith("Email:")) {
-      replaceParagraphTextPreservingStyle(doc, p, `Email: ${student.email}`);
+    } else if (raw.includes("Họ và tên:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `1. Họ và tên: ${student.fullName.toUpperCase()}`);
+    } else if (raw.includes("MSSV:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `2. MSSV: ${student.mssv}`);
+    } else if (raw.includes("Sinh viên năm thứ:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `3. Sinh viên năm thứ: ${student.studentYear}`);
+    } else if (raw.includes("Lớp - Khoa:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `4. Lớp - Khoa: ${student.classAndFaculty}`);
+    } else if (raw.includes("Chức vụ Đoàn, Hội:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `5. Chức vụ Đoàn, Hội: ${student.unionPosition}`);
+    } else if (raw.includes("Số điện thoại:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `6. Số điện thoại: ${student.phone}`);
+    } else if (raw.includes("Email:")) {
+      replaceParagraphTextPreservingStyle(doc, p, `7. Email: ${student.email}`);
     }
   }
 
@@ -703,9 +710,11 @@ export async function buildSubmissionDocx(params: {
       }
     }
     const nkIdx = siblingParagraphs.indexOf(nguoiKhaiParagraph);
-    const signerParagraph = nkIdx >= 0 ? siblingParagraphs[nkIdx + 4] : undefined;
+    const signerParagraph = nkIdx >= 0 && siblingParagraphs.length > nkIdx + 1
+      ? siblingParagraphs[siblingParagraphs.length - 1]
+      : undefined;
     if (signerParagraph) {
-      replaceParagraphTextPreservingStyle(doc, signerParagraph, student.fullName);
+      replaceParagraphTextPreservingStyle(doc, signerParagraph, student.fullName.toUpperCase());
       // Ensure bold styling on the signer name run
       const run = signerParagraph.getElementsByTagName("w:r")[0];
       if (run) {

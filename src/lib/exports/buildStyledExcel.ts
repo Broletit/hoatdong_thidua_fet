@@ -25,7 +25,7 @@ function sanitizeSheetName(name: string): string {
  */
 export async function buildStyledExcelBuffer(options: BuildStyledExcelOptions): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "MeritTrack";
+  workbook.creator = "thiduafet";
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(sanitizeSheetName(options.sheetName), {

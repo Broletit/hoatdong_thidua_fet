@@ -8,7 +8,7 @@ function getSigningSecret() {
   if (process.env.NODE_ENV === "production") {
     throw new Error("Thiếu cấu hình QR_SIGN_SECRET cho môi trường production.");
   }
-  return "merittrack-local-development-qr-secret";
+  return "thiduafet-local-development-qr-secret";
 }
 
 export type StudentQrPayload = {

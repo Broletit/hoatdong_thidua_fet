@@ -81,54 +81,125 @@ export default function StudentSubmissionCriteriaList({ items, editable, editHre
         const groupSubmitted = groupItems.filter(item => ["Đã đạt", "Đã nộp minh chứng"].includes(getEvidenceStatus(item))).length;
         return <div key={groupCode} className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-l-4 border-blue-700 bg-blue-50 px-4 py-3"><h3 className="text-base font-semibold text-blue-950">{groupCode}. {groupTitle}</h3><div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"><span className="text-sm font-semibold text-blue-900">Yêu cầu: Đạt tối thiểu {groupRequired}/{groupItems.length} tiêu chí</span><span className="text-sm font-bold text-blue-700">Đã nộp {groupSubmitted}/{groupItems.length} tiêu chí</span>{groupAchieved > 0 ? <span className="text-sm font-bold text-emerald-700">Đã đạt {groupAchieved}/{groupItems.length} tiêu chí</span> : null}</div></div>
-          <CriteriaTable style={{ width: "76rem", minWidth: "76rem", tableLayout: "auto" }} className="submission-criteria-table divide-y divide-slate-200 [&_th]:whitespace-nowrap! [&_td]:whitespace-normal! [&_td_div]:whitespace-normal! [&_td]:[overflow-wrap:anywhere]" containerClassName="overflow-x-auto rounded-none!">
-            <colgroup><col style={{ width: "8%" }} /><col style={{ width: "8%" }} /><col style={{ width: "34%" }} /><col style={{ width: "12%" }} /><col style={{ width: "22%" }} /><col style={{ width: "16%" }} /></colgroup>
+          <CriteriaTable style={{ width: "76rem", minWidth: "76rem", tableLayout: "auto" }} className="submission-criteria-table divide-y divide-slate-200 [&_th]:whitespace-nowrap! [&_td]:whitespace-normal!" containerClassName="overflow-x-auto rounded-none!">
+            <colgroup><col style={{ width: "8%" }} /><col style={{ width: "8%" }} /><col style={{ width: "34%" }} /><col style={{ width: "12%" }} /><col style={{ width: "22%" }} /><col style={{ width: "16%", minWidth: "200px" }} /></colgroup>
             <thead className="bg-blue-800 text-white"><tr>
               <th className="px-1 py-3 text-center text-sm font-semibold whitespace-nowrap break-words sm:px-3">Mã</th>
               <th data-column-align="left" className="px-1 py-3 text-left text-sm font-semibold whitespace-nowrap break-words sm:px-3">Tiêu chí</th>
               <th className="px-1 py-3 text-center text-sm font-semibold whitespace-nowrap break-words sm:px-3">Bắt buộc</th>
               <th className="px-1 py-3 text-center text-sm font-semibold whitespace-nowrap break-words sm:px-3">Trạng thái</th>
-              <th className="px-1 py-3 text-center text-sm font-semibold whitespace-nowrap break-words sm:px-3">Minh chứng</th>
+              <th className="px-1 py-3 text-center text-sm font-semibold whitespace-nowrap break-words sm:px-3 min-w-[200px]">Minh chứng</th>
             </tr></thead>
-            <tbody className="divide-y divide-slate-100 bg-white">{groupItems.map(item => <tr key={item.code} className="even:bg-slate-50/60 hover:bg-blue-50/50 transition-colors">
+            <tbody className="divide-y divide-slate-100 bg-white">{groupItems.map(item => <tr key={item.code} className="even:bg-slate-50/60 hover:bg-blue-50/50">
               <td className="px-1 py-4 sm:px-3 text-center text-sm font-medium text-slate-900">{item.code}</td>
               <td data-column-align="left" className="px-1 py-4 sm:px-3 text-left text-sm text-slate-900">
                 <div className="whitespace-normal! break-words font-medium leading-6">{item.title}</div>
                 {item.description ? <div className="mt-1 whitespace-normal! break-words text-sm leading-6 text-slate-500"><ExpandableText text={item.description} maxChars={160} /></div> : null}
-                {item.auto_message || item.matched_activity_titles ? <div className="[&_*]:whitespace-normal! [&_*]:break-words"><AutoCriteriaMessage message={item.auto_message} matchedActivityTitles={item.matched_activity_titles} /></div> : null}
+                {item.auto_message || item.matched_activity_titles ? <div className="mt-1.5 [&_*]:whitespace-normal! [&_*]:break-words"><AutoCriteriaMessage message={item.auto_message} matchedActivityTitles={item.matched_activity_titles} /></div> : null}
               </td>
-              <td className="px-1 py-4 sm:px-3 text-center text-sm"><span className={"inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ring-1 " + (Number(item.is_required) === 1 ? "bg-rose-50 text-rose-700 ring-rose-100" : "bg-slate-100 text-slate-600 ring-slate-100")}>{Number(item.is_required) === 1 ? "Có" : "Không"}</span></td>
-              <td className="px-1 py-4 sm:px-3 text-center text-sm"><span className={"inline-flex max-w-full items-center justify-center whitespace-nowrap! rounded-full px-3 py-1 text-xs font-semibold leading-5 ring-1 " + getEvidenceClass(item)}>{getEvidenceStatus(item)}</span></td>
-              <td className="px-1 py-4 sm:px-3 text-center text-sm"><div className="flex flex-col items-center gap-2">
-                {item.evidence_units && item.evidence_units.length > 1 ? (
-                  <div className="w-full divide-y divide-slate-100">
-                    {item.evidence_units.map((unit, uIdx) => (
-                      <div key={unit.id} className="flex flex-col items-center gap-1 py-1.5 first:pt-0 last:pb-0">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-                          <span>Minh chứng {uIdx + 1}</span>
-                          {unit.reviewDecision === "pass" ? (
-                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">Đạt</span>
-                          ) : unit.reviewDecision === "fail" ? (
-                            <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[11px] text-rose-700">Chưa đạt</span>
-                          ) : null}
+              <td className="px-1 py-4 sm:px-3 text-center text-sm">
+                <span className={"inline-flex rounded-full px-3 py-1 text-xs font-semibold " + (Number(item.is_required) === 1 ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600")}>
+                  {Number(item.is_required) === 1 ? "Có" : "Không"}
+                </span>
+              </td>
+              <td className="px-1 py-4 sm:px-3 text-center text-sm">
+                <span className={"inline-flex max-w-full items-center justify-center whitespace-normal break-words rounded-full px-3 py-1 text-xs font-semibold leading-5 ring-1 " + getEvidenceClass(item)}>
+                  {getEvidenceStatus(item)}
+                </span>
+              </td>
+              <td className="px-1 py-4 sm:px-3 text-sm min-w-[200px]" style={{ whiteSpace: "nowrap", overflowWrap: "normal", wordBreak: "keep-all" }}>
+                <div className="min-w-[200px] whitespace-nowrap!" style={{ whiteSpace: "nowrap", overflowWrap: "normal", wordBreak: "keep-all" }}>
+                  {item.evidence_units && item.evidence_units.length > 1 ? (
+                    <div className="space-y-2.5" style={{ whiteSpace: "nowrap" }}>
+                      {item.evidence_units.map((unit, uIdx) => (
+                        <div key={unit.id} className="border-b border-slate-100 pb-2 last:border-b-0 last:pb-0 text-center" style={{ whiteSpace: "nowrap" }}>
+                          <div className="flex items-center justify-center gap-2 text-xs whitespace-nowrap!" style={{ whiteSpace: "nowrap" }}>
+                            <span
+                              className="font-semibold text-slate-700 whitespace-nowrap! shrink-0"
+                              style={{ whiteSpace: "nowrap", wordBreak: "keep-all", overflowWrap: "normal", display: "inline-block" }}
+                            >
+                              Minh chứng {uIdx + 1}
+                            </span>
+                            {unit.reviewDecision === "pass" ? (
+                              <span
+                                className="criteria-status-label inline-flex shrink-0 whitespace-nowrap! rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
+                                style={{ whiteSpace: "nowrap", wordBreak: "keep-all", overflowWrap: "normal" }}
+                              >
+                                Đạt
+                              </span>
+                            ) : unit.reviewDecision === "fail" ? (
+                              <span
+                                className="criteria-status-label inline-flex shrink-0 whitespace-nowrap! rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700"
+                                style={{ whiteSpace: "nowrap", wordBreak: "keep-all", overflowWrap: "normal" }}
+                              >
+                                Chưa đạt
+                              </span>
+                            ) : (
+                              <span
+                                className="criteria-status-label inline-flex shrink-0 whitespace-nowrap! rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                                style={{ whiteSpace: "nowrap", wordBreak: "keep-all", overflowWrap: "normal" }}
+                              >
+                                Chờ duyệt
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-center gap-0.5 mt-1">
+                            {unit.note?.trim() ? (
+                              <button
+                                type="button"
+                                onClick={() => setViewedEvidence({ code: `${item.code} (Minh chứng ${uIdx + 1})`, content: unit.note! })}
+                                className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! whitespace-nowrap! block underline underline-offset-2 hover:text-blue-900"
+                                style={{ whiteSpace: "nowrap" }}
+                              >
+                                Xem nội dung
+                              </button>
+                            ) : null}
+                            {unit.fileId ? (
+                              <a
+                                href={"/api/submissions/files/" + unit.fileId}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={unit.fileName ?? ""}
+                                className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! block! max-w-full whitespace-nowrap! underline underline-offset-2 hover:text-blue-900"
+                                style={{ whiteSpace: "nowrap" }}
+                              >
+                                Xem minh chứng
+                              </a>
+                            ) : null}
+                          </div>
                         </div>
-                        {unit.note?.trim() ? (
-                          <button type="button" onClick={() => setViewedEvidence({ code: `${item.code} (Minh chứng ${uIdx + 1})`, content: unit.note! })} className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! whitespace-normal! break-words underline underline-offset-2 hover:text-blue-900">Xem nội dung</button>
-                        ) : null}
-                        {unit.fileId ? (
-                          <a href={"/api/submissions/files/" + unit.fileId} target="_blank" rel="noopener noreferrer" title={unit.fileName ?? ""} className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! block! max-w-full whitespace-nowrap! break-words underline underline-offset-2 hover:text-blue-900">Xem minh chứng</a>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    {item.content_text?.trim() ? <button type="button" onClick={() => setViewedEvidence({ code: item.code, content: item.content_text! })} className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! whitespace-normal! break-words underline underline-offset-2 hover:text-blue-900">Xem nội dung</button> : null}
-                    {item.files.map((file, index) => <a key={file.id} href={"/api/submissions/files/" + file.id} target="_blank" rel="noopener noreferrer" title={file.fileName} className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! block! max-w-full whitespace-nowrap! break-words underline underline-offset-2 hover:text-blue-900">{item.files.length === 1 ? "Xem minh chứng" : "Minh chứng " + (index + 1)}</a>)}
-                    {!item.content_text?.trim() && !item.files.length ? <span className="text-slate-400">—</span> : null}
-                  </>
-                )}
-              </div></td>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-0.5" style={{ whiteSpace: "nowrap" }}>
+                      {item.content_text?.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => setViewedEvidence({ code: item.code, content: item.content_text! })}
+                          className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! whitespace-nowrap! block underline underline-offset-2 hover:text-blue-900"
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          Xem nội dung
+                        </button>
+                      ) : null}
+                      {item.files.map((file, index) => (
+                        <a
+                          key={file.id}
+                          href={"/api/submissions/files/" + file.id}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={file.fileName}
+                          className="h-auto! min-h-0! border-0! bg-transparent! p-0! rounded-none! text-sm! font-medium! text-blue-700! block! max-w-full whitespace-nowrap! underline underline-offset-2 hover:text-blue-900"
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          {item.files.length === 1 ? "Xem minh chứng" : "Minh chứng " + (index + 1)}
+                        </a>
+                      ))}
+                      {!item.content_text?.trim() && !item.files.length ? <span className="text-slate-400">—</span> : null}
+                    </div>
+                  )}
+                </div>
+              </td>
             </tr>)}</tbody>
           </CriteriaTable>
         </div>;

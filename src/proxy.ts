@@ -5,7 +5,41 @@ import { detailPagePattern, detailApiPattern, getPagePublicId, resolvePagePublic
 import { validateApiRequest } from "@/server/auth/apiRequestGuard";
 
 export async function proxy(request: NextRequest) {
-  const isApi = request.nextUrl.pathname.startsWith("/api/");
+  const pathname = request.nextUrl.pathname;
+
+  // Kiểm tra chế độ bảo trì hệ thống
+  const isMaintenance = process.env.MAINTENANCE_MODE === "true";
+  if (isMaintenance) {
+    const isMaintenancePath = pathname === "/maintenance";
+    const isStatic =
+      pathname.startsWith("/_next/") ||
+      pathname.startsWith("/static/") ||
+      /\.(?:png|jpg|jpeg|gif|svg|ico|webp)$/i.test(pathname);
+
+    const bypassParam = request.nextUrl.searchParams.get("bypass");
+    const secret = process.env.PASSWORD_RESET_SECRET || "maintenance-bypass";
+    const hasBypass =
+      request.cookies.get("maintenance_bypass")?.value === "1" ||
+      (Boolean(secret) && Boolean(bypassParam) && bypassParam === secret);
+
+    if (!isMaintenancePath && !isStatic && !hasBypass) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { message: "Hệ thống đang bảo trì nâng cấp định kỳ. Vui lòng quay lại sau.", maintenance: true },
+          { status: 503 }
+        );
+      }
+      return NextResponse.redirect(new URL("/maintenance", request.url));
+    }
+
+    if (hasBypass && bypassParam) {
+      const res = NextResponse.redirect(new URL(pathname, request.url));
+      res.cookies.set("maintenance_bypass", "1", { httpOnly: true, sameSite: "lax", maxAge: 86400 });
+      return res;
+    }
+  }
+
+  const isApi = pathname.startsWith("/api/");
   if (isApi) {
     const invalidRequest = validateApiRequest(request);
     if (invalidRequest) return invalidRequest;
@@ -19,7 +53,7 @@ export async function proxy(request: NextRequest) {
   if (!numeric && !publicRoute && !pageRoute && !apiRoute && !evidenceRoute && !protectedApi) return NextResponse.next();
   const db = getDatabase();
   const session = (await db.first(`SELECT s.login_context,u.role FROM sessions s JOIN users u ON u.id=s.user_id
-    WHERE s.id=? AND s.revoked_at IS NULL AND CAST(s.expires_at AS DATETIME(3))>CURRENT_TIMESTAMP(3) AND u.is_active=1`, [request.cookies.get("merit_track_session")?.value ?? ""])) as {login_context:string;role:string}|undefined;
+    WHERE s.id=? AND s.revoked_at IS NULL AND CAST(s.expires_at AS DATETIME(3))>CURRENT_TIMESTAMP(3) AND u.is_active=1`, [request.cookies.get("thiduafet_session")?.value ?? request.cookies.get("merit_track_session")?.value ?? ""])) as {login_context:string;role:string}|undefined;
   if (!session) return isApi ? NextResponse.json({message:"Vui lòng đăng nhập."}, {status:401}) : NextResponse.redirect(new URL("/login",request.url));
   const adminApi = request.nextUrl.pathname.startsWith("/api/admin/") || (request.nextUrl.pathname === "/api/cohorts" && request.method === "POST");
   if (adminApi && (session.role !== "admin" || session.login_context !== "admin")) return NextResponse.json({message:"Không có quyền truy cập."}, {status:403});
@@ -66,4 +100,8 @@ export async function proxy(request: NextRequest) {
   return NextResponse.rewrite(destination);
 }
 
-export const config = { matcher: ["/a/:path*", "/o/:path*", "/dashboard/:path*", "/uploads/submissions/:path*", "/api/:path*"] };
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};

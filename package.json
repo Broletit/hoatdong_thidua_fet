@@ -1,5 +1,5 @@
 {
-    "name": "merit-track",
+    "name": "thiduafet",
     "version": "0.1.0",
     "private": true,
     "scripts": {
@@ -18,8 +18,10 @@
         "reports:refresh-cache": "tsx scripts/refresh-report-assessment-cache.ts",
         "storage:migrate-private": "tsx scripts/migrate-public-uploads-to-private-storage.ts",
         "typecheck": "tsc --noEmit",
+        "email:test": "tsx scripts/test-email.ts",
         "storage:cleanup": "tsx scripts/storage-cleanup.ts",
-        "storage:migrate-onedrive": "tsx scripts/migrate-local-files-to-onedrive.ts"
+        "storage:migrate-onedrive": "tsx scripts/migrate-local-files-to-onedrive.ts",
+        "pack": "node scripts/pack-cpanel.cjs"
     },
     "dependencies": {
         "@xmldom/xmldom": "^0.9.12",

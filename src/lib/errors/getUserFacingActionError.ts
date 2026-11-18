@@ -25,6 +25,9 @@ export function getUserFacingActionError(error: unknown, fallback: string): stri
   if (/Illegal mix of collations|ONLY_FULL_GROUP_BY|\bER_[A-Z0-9_]+\b|ECONNREFUSED|PROTOCOL_CONNECTION_LOST/i.test(message)) {
     return "Không thể xử lý dữ liệu do lỗi kết nối hoặc cơ sở dữ liệu trên máy chủ. Vui lòng thử lại sau.";
   }
+  if (/onedrive|microsoft|graph\.microsoft/i.test(message)) {
+    return VIETNAMESE_CHAR_REGEX.test(message) ? message : `Lỗi lưu trữ OneDrive: ${message}`;
+  }
 
   // Chỉ giữ nguyên thông báo nếu là câu tiếng Việt hợp lệ, tránh lộ thông báo kỹ thuật tiếng Anh.
   if (VIETNAMESE_CHAR_REGEX.test(message)) {

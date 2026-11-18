@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { getDatabase } from "@/server/db/mysql";
 import { issuePasswordReset, consumePasswordReset } from "@/server/auth/passwordReset";
 import { getResetMailConfig, sendPasswordResetCode } from "@/server/email/resetMail";
+import { assertDailyEmailLimit } from "@/server/email/emailService";
 import { hashPassword } from "@/server/auth/password";
 
 export type ResetState = {ok:boolean;message:string;challengeId?:string;completed?:boolean;expiresAt?:number;resendAt?:number;email?:string};
@@ -17,15 +18,20 @@ export async function requestResetCode(_previous:ResetState,form:FormData):Promi
     const db=getDatabase();
     const recipient=(await db.first("SELECT id,email FROM users WHERE lower(mssv)=? AND lower(trim(email))=? AND is_active=1", [account.toLowerCase(), email.toLowerCase()])) as {id:number;email:string}|undefined;
     if (!recipient) return {ok:false,message:"Gmail này không khớp với MSSV đã nhập. Vui lòng kiểm tra lại."};
+
+    // Kiểm tra giới hạn tối đa email/ngày cho toàn bộ hệ thống
+    await assertDailyEmailLimit(db);
+
     const config=getResetMailConfig();
     const requestHeaders=await headers();
     const ip=requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim()||"local";
     const result=(await issuePasswordReset(db,account,email,ip,config.secret,Date.now(),60_000));
     try {
       await sendPasswordResetCode(recipient.email,result.code);
-    } catch {
+    } catch (sendErr) {
       (await db.execute("DELETE FROM password_reset_requests WHERE id=?", [result.id]));
-      return {ok:false,message:"Chưa gửi được mã xác nhận. Vui lòng thử lại hoặc liên hệ quản trị viên."};
+      const errorMsg = sendErr instanceof Error ? sendErr.message : "Chưa gửi được mã xác nhận. Vui lòng thử lại hoặc liên hệ quản trị viên.";
+      return {ok:false,message:errorMsg};
     }
     (await db.execute("UPDATE password_reset_requests SET consumed_at=? WHERE user_id=? AND id<>? AND consumed_at IS NULL", [Date.now(), recipient.id, result.id]));
     return {ok:true,challengeId:result.id,expiresAt:result.expiresAt,resendAt:Date.now()+60_000,email:recipient.email,message:"Mã xác nhận đã được gửi đến "+recipient.email+"."};

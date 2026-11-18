@@ -42,7 +42,7 @@ export function getOneDriveConfig(): OneDriveConfig {
     driveId,
     userEmail,
     siteId,
-    root: (process.env.MICROSOFT_STORAGE_ROOT || "MeritTrack/evidence").replace(/^\/+|\/+$/g, ""),
+    root: (process.env.MICROSOFT_STORAGE_ROOT || "thiduafet/evidence").replace(/^\/+|\/+$/g, ""),
   };
 }
 
@@ -50,6 +50,7 @@ export class OneDriveStorageProvider implements StorageProvider {
   readonly kind = "onedrive" as const;
   private token?: { value: string; expiresAt: number };
   private cachedDriveId?: string;
+  private verifiedFolders = new Set<string>();
 
   constructor(private readonly config?: OneDriveConfig) {}
 
@@ -116,88 +117,218 @@ export class OneDriveStorageProvider implements StorageProvider {
 
     const token = await this.accessToken();
     const headers = { authorization: `Bearer ${token}` };
+    const diagnosticErrors: string[] = [];
 
     // 1. Nếu có MICROSOFT_USER_EMAIL, lấy Drive của User này
     if (this.settings.userEmail) {
-      const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.settings.userEmail)}/drive`,
-        { headers }
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { id?: string };
-        if (data.id) {
-          this.cachedDriveId = data.id;
-          return data.id;
+      try {
+        const res = await fetch(
+          `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.settings.userEmail)}/drive`,
+          { headers }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { id?: string };
+          if (data.id) {
+            this.cachedDriveId = data.id;
+            return data.id;
+          }
+        } else {
+          const err = await res.text().catch(() => "");
+          diagnosticErrors.push(`Email ${this.settings.userEmail} [${res.status}]: ${err}`);
         }
+      } catch (e) {
+        diagnosticErrors.push(`Email ${this.settings.userEmail} lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
     // 2. Nếu có MICROSOFT_SITE_ID, lấy Drive của SharePoint Site
     if (this.settings.siteId) {
-      const res = await fetch(
-        `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(this.settings.siteId)}/drive`,
-        { headers }
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { id?: string };
-        if (data.id) {
-          this.cachedDriveId = data.id;
-          return data.id;
+      try {
+        const res = await fetch(
+          `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(this.settings.siteId)}/drive`,
+          { headers }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { id?: string };
+          if (data.id) {
+            this.cachedDriveId = data.id;
+            return data.id;
+          }
+        } else {
+          const err = await res.text().catch(() => "");
+          diagnosticErrors.push(`SharePoint Site ${this.settings.siteId} [${res.status}]: ${err}`);
         }
+      } catch (e) {
+        diagnosticErrors.push(`SharePoint Site ${this.settings.siteId} lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
     // 3. Tự động lấy Drive mặc định đầu tiên của tổ chức
-    const res = await fetch(`https://graph.microsoft.com/v1.0/drives?$top=1`, { headers });
-    if (res.ok) {
-      const data = (await res.json()) as { value?: Array<{ id: string }> };
-      if (data.value && data.value.length > 0 && data.value[0]?.id) {
-        this.cachedDriveId = data.value[0].id;
-        return this.cachedDriveId;
+    try {
+      const res = await fetch(`https://graph.microsoft.com/v1.0/drives?$top=1`, { headers });
+      if (res.ok) {
+        const data = (await res.json()) as { value?: Array<{ id: string }> };
+        if (data.value && data.value.length > 0 && data.value[0]?.id) {
+          this.cachedDriveId = data.value[0].id;
+          return this.cachedDriveId;
+        }
+      } else {
+        const err = await res.text().catch(() => "");
+        diagnosticErrors.push(`drives?$top=1 [${res.status}]: ${err}`);
       }
+    } catch (e) {
+      diagnosticErrors.push(`drives list lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
     }
 
+    const details = diagnosticErrors.length ? ` (Chi tiết: ${diagnosticErrors.join(" | ")})` : "";
     throw new Error(
-      "Không tìm thấy Drive trên OneDrive. Vui lòng cung cấp MICROSOFT_DRIVE_ID hoặc MICROSOFT_USER_EMAIL trong file .env."
+      `Không tìm thấy Drive trên OneDrive. Vui lòng cung cấp MICROSOFT_DRIVE_ID hoặc MICROSOFT_USER_EMAIL hợp lệ trong file .env.${details}`
     );
   }
 
-  private async graph(path: string, init: RequestInit = {}): Promise<Response> {
+  /**
+   * Tự động khởi tạo cấu trúc thư mục cha trên OneDrive nếu chưa tồn tại.
+   * Microsoft Graph yêu cầu toàn bộ thư mục cha phải hiện diện trước khi ghi tệp;
+   * hàm này tạo từng cấp thư mục từ gốc xuống lá và lưu vào cache để các lần sau không cần gọi lại.
+   */
+  private async ensureParentFolder(key: string): Promise<void> {
     const driveId = await this.getDriveId();
     const token = await this.accessToken();
-    const response = await fetch(
-      `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}${path}`,
-      {
-        ...init,
+
+    const fullSegments = [this.settings.root, key]
+      .filter(Boolean)
+      .join("/")
+      .split("/")
+      .filter(Boolean);
+
+    // Toàn bộ các cấp thư mục ngoại trừ tên tệp ở cuối
+    const folderSegments = fullSegments.slice(0, -1);
+    if (folderSegments.length === 0) return;
+
+    const fullFolderPath = folderSegments.join("/");
+    if (this.verifiedFolders.has(fullFolderPath)) return;
+
+    for (let i = 1; i <= folderSegments.length; i++) {
+      const currentSegments = folderSegments.slice(0, i);
+      const currentPath = currentSegments.join("/");
+      if (this.verifiedFolders.has(currentPath)) continue;
+
+      const folderName = folderSegments[i - 1];
+      const parentSegments = folderSegments.slice(0, i - 1);
+
+      const parentUrl = parentSegments.length === 0
+        ? `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root/children`
+        : `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${parentSegments.map(encodeURIComponent).join("/")}:/children`;
+
+      const createRes = await fetch(parentUrl, {
+        method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
-          ...init.headers,
+          "content-type": "application/json",
         },
+        body: JSON.stringify({
+          name: folderName,
+          folder: {},
+          "@microsoft.graph.conflictBehavior": "fail",
+        }),
+      });
+
+      if (createRes.status === 201 || createRes.status === 200 || createRes.status === 409) {
+        this.verifiedFolders.add(currentPath);
+      } else {
+        // Kiểm tra lại bằng GET xem thư mục đã tồn tại trước đó chưa
+        const checkUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${currentSegments.map(encodeURIComponent).join("/")}:`;
+        const checkRes = await fetch(checkUrl, {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        if (checkRes.ok) {
+          this.verifiedFolders.add(currentPath);
+        } else {
+          const errText = await createRes.text().catch(() => "");
+          throw new Error(`Không thể khởi tạo thư mục "${currentPath}" trên OneDrive (${createRes.status}): ${errText}`);
+        }
       }
-    );
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "");
-      throw new Error(`Thao tác lưu trữ Microsoft Graph thất bại (${response.status}): ${errText}`);
     }
-    return response;
-  }
-
-  private itemPath(key: string) {
-    return `/root:/${this.path(key)}`;
   }
 
   async put(key: string, content: Buffer, mimeType: string): Promise<ObjectMetadata> {
-    const response = await this.graph(`${this.itemPath(key)}:/content`, {
+    // 1. Đảm bảo toàn bộ cấu trúc thư mục cha đã tồn tại
+    await this.ensureParentFolder(key);
+
+    const driveId = await this.getDriveId();
+    const token = await this.accessToken();
+    const encodedPath = this.path(key);
+
+    // 2. Với tệp <= 4MB, ưu tiên PUT trực tiếp 1 lần (chuẩn Microsoft Graph cho tệp nhỏ)
+    if (content.length <= 4 * 1024 * 1024) {
+      const putUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:/content`;
+      const response = await fetch(putUrl, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": mimeType,
+          "content-length": String(content.length),
+        },
+        body: new Uint8Array(content) as unknown as BodyInit,
+      });
+
+      if (response.ok) {
+        const item = (await response.json()) as GraphItem;
+        return {
+          size: Number(item.size),
+          mimeType: item.file?.mimeType || mimeType,
+          etag: item.eTag,
+          checksumSha256: createHash("sha256").update(content).digest("hex"),
+        };
+      }
+
+      if (response.status !== 413) {
+        const errText = await response.text().catch(() => "");
+        console.warn(`[OneDrive] Simple PUT failed (${response.status}), falling back to upload session:`, errText);
+      }
+    }
+
+    // 3. Với tệp > 4MB (hoặc khi PUT trực tiếp bị từ chối), dùng Upload Session theo khuyến nghị Microsoft Graph
+    const sessionUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:/createUploadSession`;
+    const sessionRes = await fetch(sessionUrl, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        item: {
+          "@microsoft.graph.conflictBehavior": "replace",
+        },
+      }),
+    });
+
+    if (!sessionRes.ok) {
+      const errText = await sessionRes.text().catch(() => "");
+      throw new Error(`Khởi tạo phiên tải lên OneDrive thất bại (${sessionRes.status}): ${errText}`);
+    }
+
+    const sessionData = (await sessionRes.json()) as { uploadUrl?: string };
+    if (!sessionData.uploadUrl) {
+      throw new Error("Phản hồi tạo phiên từ OneDrive không trả về uploadUrl.");
+    }
+
+    // Tải toàn bộ nội dung tệp lên uploadUrl (Lưu ý: Không gửi kèm Authorization header theo tài liệu Microsoft)
+    const uploadRes = await fetch(sessionData.uploadUrl, {
       method: "PUT",
       headers: {
-        "content-type": mimeType,
         "content-length": String(content.length),
+        "content-range": `bytes 0-${content.length - 1}/${content.length}`,
       },
       body: new Uint8Array(content) as unknown as BodyInit,
     });
 
-    const item = (await response.json()) as GraphItem;
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => "");
+      throw new Error(`Tải dữ liệu tệp lên OneDrive thất bại (${uploadRes.status}): ${errText}`);
+    }
+
+    const item = (await uploadRes.json()) as GraphItem;
     return {
       size: Number(item.size),
       mimeType: item.file?.mimeType || mimeType,
@@ -207,7 +338,16 @@ export class OneDriveStorageProvider implements StorageProvider {
   }
 
   async head(key: string): Promise<ObjectMetadata> {
-    const response = await this.graph(`${this.itemPath(key)}?$select=id,size,eTag,file`);
+    const driveId = await this.getDriveId();
+    const token = await this.accessToken();
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${this.path(key)}:?$select=id,size,eTag,file`;
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      throw new Error(`Không tìm thấy thông tin tệp trên OneDrive (${response.status}): ${errText}`);
+    }
     const item = (await response.json()) as GraphItem;
     return {
       size: Number(item.size),
@@ -218,9 +358,15 @@ export class OneDriveStorageProvider implements StorageProvider {
 
   async read(key: string): Promise<StoredObject> {
     const metadata = await this.head(key);
-    const response = await this.graph(`${this.itemPath(key)}:/content`, { redirect: "follow" });
-    if (!response.body) {
-      throw new Error("Microsoft Graph trả về luồng tệp rỗng.");
+    const driveId = await this.getDriveId();
+    const token = await this.accessToken();
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${this.path(key)}:/content`;
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+      redirect: "follow",
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`Không thể đọc nội dung tệp từ OneDrive (${response.status}).`);
     }
     return { ...metadata, stream: response.body };
   }
@@ -233,14 +379,14 @@ export class OneDriveStorageProvider implements StorageProvider {
   async getDirectUrl(key: string): Promise<string> {
     const driveId = await this.getDriveId();
     const token = await this.accessToken();
-    const path = this.itemPath(key);
+    const encodedPath = this.path(key);
 
-    // 1. Thử lấy trường @microsoft.graph.downloadUrl từ metadata của item
+    // 1. Lấy @microsoft.graph.downloadUrl từ metadata của item (URL tải trực tiếp có pre-auth SAS token của Microsoft)
     try {
-      const metaRes = await fetch(
-        `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}${path}?$select=id,@microsoft.graph.downloadUrl`,
-        { headers: { authorization: `Bearer ${token}` } }
-      );
+      const metaUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:?$select=id,@microsoft.graph.downloadUrl`;
+      const metaRes = await fetch(metaUrl, {
+        headers: { authorization: `Bearer ${token}` },
+      });
       if (metaRes.ok) {
         const data = (await metaRes.json()) as GraphItem;
         if (data["@microsoft.graph.downloadUrl"]) {
@@ -252,16 +398,44 @@ export class OneDriveStorageProvider implements StorageProvider {
     }
 
     // 2. Fallback: Gọi đến :/content với redirect: manual để lấy Location header 302 của Microsoft CDN
-    const contentUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}${path}:/content`;
-    const contentRes = await fetch(contentUrl, {
-      method: "GET",
-      headers: { authorization: `Bearer ${token}` },
-      redirect: "manual",
-    });
+    try {
+      const contentUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:/content`;
+      const contentRes = await fetch(contentUrl, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        redirect: "manual",
+      });
 
-    const location = contentRes.headers.get("location");
-    if (location) {
-      return location;
+      const location = contentRes.headers.get("location");
+      if (location) {
+        return location;
+      }
+    } catch (err) {
+      console.warn("[OneDrive] getDirectUrl content redirect failed:", err);
+    }
+
+    // 3. Fallback 3: Tạo link xem (view link)
+    try {
+      const shareUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:/createLink`;
+      const shareRes = await fetch(shareUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "view",
+          scope: "anonymous",
+        }),
+      });
+      if (shareRes.ok) {
+        const shareData = (await shareRes.json()) as { link?: { webUrl?: string } };
+        if (shareData.link?.webUrl) {
+          return shareData.link.webUrl;
+        }
+      }
+    } catch (err) {
+      console.warn("[OneDrive] getDirectUrl createLink fallback failed:", err);
     }
 
     throw new Error("Không thể tạo liên kết xem trực tiếp từ OneDrive.");
@@ -270,17 +444,16 @@ export class OneDriveStorageProvider implements StorageProvider {
   async delete(key: string): Promise<void> {
     const driveId = await this.getDriveId();
     const token = await this.accessToken();
-    const response = await fetch(
-      `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}${this.itemPath(key)}`,
-      {
-        method: "DELETE",
-        headers: { authorization: `Bearer ${token}` },
-      }
-    );
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${this.path(key)}:`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}` },
+    });
 
     if (response.status === 404) return;
     if (!response.ok) {
-      throw new Error(`Xóa tệp trên Microsoft Graph thất bại (${response.status}).`);
+      const err = await response.text().catch(() => "");
+      console.warn(`[OneDrive] Xóa tệp thất bại (${response.status}): ${err}`);
     }
   }
 }
