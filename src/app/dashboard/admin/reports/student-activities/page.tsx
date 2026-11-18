@@ -115,7 +115,7 @@ export default async function StudentActivitiesReportPage({
         AND ura_student.user_id IS NOT NULL
         AND ${cohortClause(params.cohort,"u.cohort")}
         ${classId > 0 ? "AND c.id = ?" : ""}
-      GROUP BY c.id
+      GROUP BY c.id, c.code
       HAVING total > 0
       ORDER BY c.code ASC
       `, [selectedTerm.id, ...(activityId > 0 ? [activityId] : []), ...(classId > 0 ? [classId] : [])])) as Array<{ label: string; attended: number; total: number; value: number }>;
@@ -135,7 +135,7 @@ export default async function StudentActivitiesReportPage({
         AND ${cohortClause(params.cohort,"(SELECT cohort FROM users WHERE id=ar.user_id)")}
         ${activityId > 0 ? "AND a.id = ?" : ""}
         ${classId > 0 ? "AND EXISTS (SELECT 1 FROM class_members cm WHERE cm.user_id=ar.user_id AND cm.class_id=? AND cm.left_at IS NULL)" : ""}
-      GROUP BY a.id
+      GROUP BY a.id, a.title
       HAVING registrations > 0
       ORDER BY registrations DESC, a.title ASC
        `, [selectedTerm.id, audienceType, ...(activityId > 0 ? [activityId] : []), ...(classId > 0 ? [classId] : [])])) as Array<{ label: string; registrations: number; attended: number }>;

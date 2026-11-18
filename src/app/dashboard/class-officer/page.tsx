@@ -78,25 +78,24 @@ export default async function ClassOfficerDashboardPage({ searchParams }: { sear
     INNER JOIN class_members cm ON cm.user_id=ar.user_id AND cm.left_at IS NULL
     WHERE cm.class_id IN (${placeholders}) AND a.term_id=? AND a.audience_type='student'
     GROUP BY a.id, a.title, a.start_at
-    ORDER BY attended DESC, registered DESC, CAST(a.start_at AS DATETIME(3)) DESC
+    ORDER BY attended DESC, registered DESC, MAX(CAST(a.start_at AS DATETIME(3))) DESC
     LIMIT ? OFFSET ?
   `, [...classIds, term.id, activityPageSize, (activityPage - 1) * activityPageSize])) as ActivityRow[] : [];
 
   const rawStatuses = classIds.length ? (await db.rows(`
-    SELECT CASE
-      WHEN s.status LIKE 'needs_revision%' OR s.status LIKE 'rejected%' THEN 'revision'
-      WHEN s.status IN ('submitted_v1','submitted_v2') THEN 'pending'
-      ELSE s.status
-    END status, COUNT(*) total
-    FROM submissions s
-    INNER JOIN events e ON e.id=s.event_id
-    WHERE s.class_id IN (${placeholders}) AND e.term_id=? AND e.type='student'
-      AND s.submitted_at IS NOT NULL
-    GROUP BY CASE
-      WHEN s.status LIKE 'needs_revision%' OR s.status LIKE 'rejected%' THEN 'revision'
-      WHEN s.status IN ('submitted_v1','submitted_v2') THEN 'pending'
-      ELSE s.status
-    END
+    SELECT status, COUNT(*) total
+    FROM (
+      SELECT CASE
+        WHEN s.status LIKE 'needs_revision%' OR s.status LIKE 'rejected%' THEN 'revision'
+        WHEN s.status IN ('submitted_v1','submitted_v2') THEN 'pending'
+        ELSE s.status
+      END status
+      FROM submissions s
+      INNER JOIN events e ON e.id=s.event_id
+      WHERE s.class_id IN (${placeholders}) AND e.term_id=? AND e.type='student'
+        AND s.submitted_at IS NOT NULL
+    ) status_rows
+    GROUP BY status
   `, [...classIds, term.id])) as StatusRow[] : [];
   const statusMap = new Map(rawStatuses.map((item) => [item.status, Number(item.total)]));
 

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default function MaintenancePage() {
-  const isMaintenanceMode = process.env.MAINTENANCE_MODE === "true";
+  const isMaintenanceMode = String(process.env.MAINTENANCE_MODE ?? "").trim().toLowerCase() === "true";
 
   return <MaintenanceClient isMaintenanceMode={isMaintenanceMode} />;
 }

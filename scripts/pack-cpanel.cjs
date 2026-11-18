@@ -51,9 +51,34 @@ async function packCpanel() {
 
   const standaloneDir = path.join(__dirname, '..', '.next', 'standalone');
 
-  // Add server.js
-  if (fs.existsSync(path.join(standaloneDir, 'server.js'))) {
-    archive.file(path.join(standaloneDir, 'server.js'), { name: 'server.js', mode: 0o644 });
+  // Add server.js (inject lightweight .env loader so cPanel standalone reads .env automatically)
+  const serverJsPath = path.join(standaloneDir, 'server.js');
+  if (fs.existsSync(serverJsPath)) {
+    const envLoader = [
+      "const __fs = require('fs');",
+      "const __path = require('path');",
+      "try {",
+      "  const __envPath = __path.join(__dirname, '.env');",
+      "  if (__fs.existsSync(__envPath)) {",
+      "    const __lines = __fs.readFileSync(__envPath, 'utf8').split(/\\r?\\n/);",
+      "    for (const __line of __lines) {",
+      "      const __trimmed = __line.trim();",
+      "      if (!__trimmed || __trimmed.startsWith('#')) continue;",
+      "      const __eqIdx = __trimmed.indexOf('=');",
+      "      if (__eqIdx <= 0) continue;",
+      "      const __key = __trimmed.slice(0, __eqIdx).trim();",
+      "      let __val = __trimmed.slice(__eqIdx + 1).trim();",
+      "      if ((__val.startsWith('\"') && __val.endsWith('\"')) || (__val.startsWith(\"'\") && __val.endsWith(\"'\"))) {",
+      "        __val = __val.slice(1, -1);",
+      "      }",
+      "      if (process.env[__key] === undefined) process.env[__key] = __val;",
+      "    }",
+      "  }",
+      "} catch {}",
+      "",
+    ].join("\n");
+    const originalServerJs = fs.readFileSync(serverJsPath, 'utf8');
+    archive.append(envLoader + originalServerJs, { name: 'server.js', mode: 0o644 });
   }
 
   // Add package.json
@@ -61,12 +86,21 @@ async function packCpanel() {
     archive.file(path.join(standaloneDir, 'package.json'), { name: 'package.json', mode: 0o644 });
   }
 
-  // Add .next (excluding cache)
+  // Add .next (excluding cache, dereferencing Windows junctions/symlinks like .next/node_modules/rimraf-*)
   const standaloneNextDir = path.join(standaloneDir, '.next');
+  const tempNextDir = path.join(standaloneDir, '.next-pack-temp');
+  if (fs.existsSync(tempNextDir)) {
+    fs.rmSync(tempNextDir, { recursive: true, force: true });
+  }
   if (fs.existsSync(standaloneNextDir)) {
-    archive.directory(standaloneNextDir, '.next', (entry) => {
-      if (entry.name.includes('/cache/') || entry.name.endsWith('/cache')) return false;
-      entry.mode = entry.name.endsWith('/') ? 0o755 : 0o644;
+    fs.cpSync(standaloneNextDir, tempNextDir, {
+      recursive: true,
+      dereference: true,
+      filter: (src) => !src.includes(`${path.sep}cache${path.sep}`) && !src.endsWith(`${path.sep}cache`),
+    });
+    archive.directory(tempNextDir, '.next', (entry) => {
+      const isDir = Boolean(entry.stats && entry.stats.isDirectory()) || entry.name.endsWith('/');
+      entry.mode = isDir ? 0o755 : 0o644;
       return entry;
     });
   }
@@ -75,7 +109,8 @@ async function packCpanel() {
   const standalonePublicDir = path.join(standaloneDir, 'public');
   if (fs.existsSync(standalonePublicDir)) {
     archive.directory(standalonePublicDir, 'public', (entry) => {
-      entry.mode = entry.name.endsWith('/') ? 0o755 : 0o644;
+      const isDir = Boolean(entry.stats && entry.stats.isDirectory()) || entry.name.endsWith('/');
+      entry.mode = isDir ? 0o755 : 0o644;
       return entry;
     });
   }
@@ -84,6 +119,9 @@ async function packCpanel() {
   archive.append('', { name: 'storage/.gitkeep', mode: 0o644 });
 
   await archive.finalize();
+  if (fs.existsSync(tempNextDir)) {
+    fs.rmSync(tempNextDir, { recursive: true, force: true });
+  }
 }
 
 packCpanel().catch((err) => {

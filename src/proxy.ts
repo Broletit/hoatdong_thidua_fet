@@ -9,7 +9,7 @@ export async function proxy(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
 
   // Kiểm tra chế độ bảo trì hệ thống
-  const isMaintenance = process.env.MAINTENANCE_MODE === "true";
+  const isMaintenance = String(process.env.MAINTENANCE_MODE ?? "").trim().toLowerCase() === "true";
   if (isMaintenance) {
     const isMaintenancePath = pathname === "/maintenance";
     const isStatic =
@@ -18,7 +18,7 @@ export async function proxy(request: NextRequest) {
       /\.(?:png|jpg|jpeg|gif|svg|ico|webp)$/i.test(pathname);
 
     const bypassParam = request.nextUrl.searchParams.get("bypass");
-    const secret = process.env.PASSWORD_RESET_SECRET || "maintenance-bypass";
+    const secret = process.env.MAINTENANCE_BYPASS_KEY || process.env.PASSWORD_RESET_SECRET || "maintenance-bypass";
     const hasBypass =
       request.cookies.get("maintenance_bypass")?.value === "1" ||
       (Boolean(secret) && Boolean(bypassParam) && bypassParam === secret);
@@ -30,8 +30,7 @@ export async function proxy(request: NextRequest) {
           { status: 503 }
         );
       }
-      // Dùng rewrite để render trực tiếp trang bảo trì thay vì redirect 302,
-      // giúp tránh lỗi Apache ProxyErrorOverride / lệch Host reverse proxy trên cPanel
+      // Dùng internal rewrite giữ nguyên host nội bộ của request để Next.js render trực tiếp /maintenance
       const maintenanceUrl = request.nextUrl.clone();
       maintenanceUrl.pathname = "/maintenance";
       maintenanceUrl.search = "";
@@ -40,6 +39,10 @@ export async function proxy(request: NextRequest) {
 
     if (hasBypass && bypassParam) {
       const bypassUrl = request.nextUrl.clone();
+      const reqHost = request.headers.get("x-forwarded-host") || request.headers.get("host");
+      const reqProto = request.headers.get("x-forwarded-proto");
+      if (reqHost) bypassUrl.host = reqHost;
+      if (reqProto) bypassUrl.protocol = reqProto;
       bypassUrl.searchParams.delete("bypass");
       const res = NextResponse.redirect(bypassUrl, 302);
       res.cookies.set("maintenance_bypass", "1", { httpOnly: true, sameSite: "lax", maxAge: 86400 });

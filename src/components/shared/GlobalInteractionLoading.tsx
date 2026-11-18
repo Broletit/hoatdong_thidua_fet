@@ -58,6 +58,7 @@ export default function GlobalInteractionLoading() {
         if (control.target === "_blank" || control.hasAttribute("download")) return;
         const destination = new URL(control.href, window.location.href);
         if (destination.origin !== window.location.origin) return;
+        if (destination.pathname.startsWith("/api/") || destination.pathname.endsWith("/export")) return;
         if (
           destination.href === window.location.href ||
           (destination.hash && destination.pathname === window.location.pathname && destination.search === window.location.search)

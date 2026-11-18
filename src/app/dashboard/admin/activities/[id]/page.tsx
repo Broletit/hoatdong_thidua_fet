@@ -101,17 +101,6 @@ export default async function AdminActivityDetailPage({ params, searchParams }: 
               </span>
             )}
             </div>
-            {Number(activity.registrations ?? 0) > 0 ? (
-              <a href={`/api/admin/activities/${activity.id}/export`} className="inline-flex min-h-10 w-full items-center justify-center whitespace-nowrap rounded-xl bg-amber-300 px-3 text-sm font-medium text-amber-950 transition hover:bg-amber-200">Xuất kết quả tham gia</a>
-            ) : (
-              <span
-                aria-disabled="true"
-                title="Chưa có người đăng ký nên chưa thể xuất danh sách"
-                className="inline-flex min-h-10 w-full cursor-not-allowed items-center justify-center whitespace-nowrap rounded-xl bg-slate-200 px-3 text-sm font-medium text-slate-400"
-              >
-                Xuất danh sách tham gia
-              </span>
-            )}
           </div>
         </div>
       </section>

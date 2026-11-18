@@ -14,6 +14,11 @@ export function downloadBase64Excel(fileName: string, base64: string) {
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName.endsWith(".xlsx") ? fileName : `${fileName}.xlsx`;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
 }

@@ -209,19 +209,19 @@ export default async function AdminDashboardPage({
         </div>
 
         {closingEvents.length > 0 ? (
-          <div className="mt-5 border-t border-slate-100 pt-5">
+          <div className="mt-5 min-w-0 border-t border-slate-100 pt-5">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
               <CalendarClock size={16} /> Đợt xét gần hạn
             </div>
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-3 lg:grid-cols-3">
               {closingEvents.map((event) => (
                 <Link
                   key={event.id}
                   href={`/dashboard/admin/events/${event.id}`}
-                  className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100 transition hover:bg-slate-100"
+                  className="block min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100 transition hover:bg-slate-100"
                 >
                   <div className="truncate text-sm font-semibold text-slate-900">{event.title}</div>
-                  <div className="mt-1 text-xs text-slate-500">
+                  <div className="mt-1 truncate text-xs text-slate-500">
                     {formatDateTimeVN(event.end_at)} · {event.submitted_count} hồ sơ
                   </div>
                 </Link>

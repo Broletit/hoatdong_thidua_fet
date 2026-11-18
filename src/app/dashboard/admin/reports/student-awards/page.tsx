@@ -7,48 +7,36 @@ import ReportTabs from "@/components/admin/reports/ReportTabs";
 import StudentAwardReportFilter from "@/components/admin/reports/StudentAwardReportFilter";
 import SubmissionReportTableFilter from "@/components/admin/reports/SubmissionReportTableFilter";
 import FilteredListExportButton from "@/components/admin/reports/FilteredListExportButton";
-import TablePotential from "@/components/admin/reports/PotentialStudentTable";
 import ReportPageHeader from "@/components/admin/reports/ReportPageHeader";
 import AcademicTermSelect from "@/components/shared/AcademicTermSelect";
 import { requireAdminContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
 import { addCohortFilter, cohortClause } from "@/server/cohorts/sql";
 import { getAcademicTermForView, getAcademicTermsForSelect } from "@/server/academic-terms/getAcademicTermForView";
-import { evaluateAutoCriteria } from "@/server/events/evaluateAutoCriteria";
 
-type CriterionRow = { code: string; group_code: string; group_title: string; is_required: number; min_required: number };
-
-function assessStudentProgress(criteria: CriterionRow[], passed: Set<string>) {
-  const groups = new Map<string, { title: string; achieved: number; total: number; min: number; mandatory: number; missingMandatory: number }>();
-  for (const criterion of criteria) {
-    const group = groups.get(criterion.group_code) ?? { title: criterion.group_title, achieved: 0, total: 0, min: Number(criterion.min_required), mandatory: 0, missingMandatory: 0 };
-    group.total += 1;
-    if (Number(criterion.is_required) === 1) group.mandatory += 1;
-    if (passed.has(criterion.code)) group.achieved += 1;
-    else if (Number(criterion.is_required) === 1) group.missingMandatory += 1;
-    groups.set(criterion.group_code, group);
-  }
-  const missingRequired = Array.from(groups.values()).reduce(
-    (total, group) => total + group.missingMandatory + Math.max(0, group.min - group.achieved - group.missingMandatory),
-    0,
-  );
-  const standardProgress = Array.from(groups, ([code, group]) => {
-    const required = Math.max(group.min, group.mandatory);
-    const credited = Math.min(group.achieved, required);
-    return { code, title: group.title, achieved: group.achieved, total: group.total, required, credited, missingMandatory: group.missingMandatory, percent: required > 0 ? Math.round((credited / required) * 100) : 100 };
-  });
-  const requiredTotal = standardProgress.reduce((sum, group) => sum + group.required, 0);
-  const creditedTotal = standardProgress.reduce((sum, group) => sum + group.credited, 0);
-  const progressPercent = requiredTotal > 0 ? Math.round((creditedTotal / requiredTotal) * 10000) / 100 : 0;
-  const isEligible = criteria.length > 0 && missingRequired === 0 && progressPercent >= 100;
-  return { achieved: passed.size, total: criteria.length, missingRequired, progressPercent, standardProgress, isEligible };
-}
-
-type SearchParams = Promise<{ cohort?: string; termId?: string; eventId?: string; classId?: string; keyword?: string; potentialStatus?: string; progressLevel?: string; participantStatus?: string; tab?: string; participantPage?: string; potentialPage?: string; criteriaPage?: string }>;
-type PotentialRow = {id:number;full_name:string;mssv:string;class_code:string|null;event_title:string|null;missing_required:number;progress_percent:number;standard_progress_json:string|null};
+type SearchParams = Promise<{
+  cohort?: string;
+  termId?: string;
+  eventId?: string;
+  classId?: string;
+  keyword?: string;
+  participantStatus?: string;
+  tab?: string;
+  participantPage?: string;
+  criteriaPage?: string;
+}>;
 type EventRow = { id: number; title: string };
 type ClassRow = { id: number; code: string; name: string };
 const PAGE_SIZE = 10;
+
+const STATUS_LABELS: Record<string, string> = {
+  passed: "Đạt",
+  failed: "Không đạt",
+  submitted_v1: "Chờ duyệt vòng 1",
+  submitted_v2: "Chờ duyệt vòng 2",
+  needs_revision_v1: "Cần chỉnh sửa",
+  needs_revision_v2: "Cần chỉnh sửa",
+};
 
 export default async function StudentAwardsReportPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdminContext();
@@ -60,10 +48,9 @@ export default async function StudentAwardsReportPage({ searchParams }: { search
   const keyword = String(params.keyword ?? "").trim();
   const activeTab = params.tab === "tables" ? "tables" : "analysis";
   const participantPage = Math.max(1, Number(params.participantPage ?? 1) || 1);
-  const potentialPage = Math.max(1, Number(params.potentialPage ?? 1) || 1);
   const criteriaPage = Math.max(1, Number(params.criteriaPage ?? 1) || 1);
   const events = await db.rows<EventRow>(`SELECT id,title FROM events WHERE type='student' AND term_id=? ORDER BY CAST(start_at AS DATETIME(3)) DESC,id DESC`, [selectedTerm.id]);
-  const classes = await db.rows<ClassRow>(`SELECT id,code,name FROM classes WHERE is_active=1 AND ${cohortClause(params.cohort,"cohort")} ORDER BY code,id`, []);
+  const classes = await db.rows<ClassRow>(`SELECT id,code,name FROM classes WHERE is_active=1 AND ${cohortClause(params.cohort, "cohort")} ORDER BY code,id`, []);
   const where: string[] = ["e.type='student'", "e.term_id=?", "s.submitted_at IS NOT NULL"];
   const values: unknown[] = [selectedTerm.id];
   if (eventId > 0) { where.push("e.id=?"); values.push(eventId); }
@@ -71,75 +58,149 @@ export default async function StudentAwardsReportPage({ searchParams }: { search
   if (keyword) { where.push("(u.full_name LIKE ? OR u.mssv LIKE ?)"); values.push(`%${keyword}%`, `%${keyword}%`); }
   addCohortFilter(where, values, params.cohort, "u.cohort");
   const whereSql = `WHERE ${where.join(" AND ")}`;
-  const summary = await db.first<{total:number;passed:number;failed:number;pending:number;needs_revision:number}>(`SELECT COUNT(DISTINCT s.id) total,COUNT(DISTINCT CASE WHEN s.status='passed' THEN s.id END) passed,COUNT(DISTINCT CASE WHEN s.status='failed' THEN s.id END) failed,COUNT(DISTINCT CASE WHEN s.status IN ('submitted_v1','submitted_v2') THEN s.id END) pending,COUNT(DISTINCT CASE WHEN s.status IN ('needs_revision_v1','needs_revision_v2') THEN s.id END) needs_revision FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id ${whereSql}`, values) ?? {total:0,passed:0,failed:0,pending:0,needs_revision:0};
-  const participantWhere = [...where]; const participantValues = [...values];
-  if (keyword) { participantWhere.push("(u.full_name LIKE ? OR u.mssv LIKE ?)"); participantValues.push(`%${keyword}%`, `%${keyword}%`); }
-  if (params.participantStatus) { participantWhere.push("s.status=?"); participantValues.push(params.participantStatus); }
-  const participantRows = await db.rows<{id:number;full_name:string;mssv:string;class_code:string|null;event_title:string;status:string;achieved:number;total:number}>(`SELECT s.id,u.full_name,u.mssv,c.code class_code,e.title event_title,s.status,(SELECT COUNT(DISTINCT i.code) FROM event_criteria_items i LEFT JOIN submission_auto_results ar ON ar.submission_id=s.id AND ar.criteria_code=i.code AND ar.passed=1 LEFT JOIN submission_criteria_reviews cr ON cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=s.review_round AND cr.decision='pass' WHERE i.event_id=s.event_id AND (ar.id IS NOT NULL OR cr.submission_id IS NOT NULL)) achieved,(SELECT COUNT(*) FROM event_criteria_items i WHERE i.event_id=s.event_id) total FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id LEFT JOIN classes c ON c.id=s.class_id WHERE ${participantWhere.join(" AND ")} ORDER BY CAST(s.submitted_at AS DATETIME(3)) DESC,u.full_name`, participantValues);
+  const summary = await db.first<{ total: number; passed: number; failed: number; pending: number; needs_revision: number }>(
+    `SELECT COUNT(DISTINCT s.id) total,COUNT(DISTINCT CASE WHEN s.status='passed' THEN s.id END) passed,COUNT(DISTINCT CASE WHEN s.status='failed' THEN s.id END) failed,COUNT(DISTINCT CASE WHEN s.status IN ('submitted_v1','submitted_v2') THEN s.id END) pending,COUNT(DISTINCT CASE WHEN s.status IN ('needs_revision_v1','needs_revision_v2') THEN s.id END) needs_revision FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id ${whereSql}`,
+    values,
+  ) ?? { total: 0, passed: 0, failed: 0, pending: 0, needs_revision: 0 };
+
+  const participantWhere = [...where];
+  const participantValues = [...values];
+  if (params.participantStatus) {
+    participantWhere.push("s.status=?");
+    participantValues.push(params.participantStatus);
+  }
+  const participantRows = await db.rows<{ id: number; full_name: string; mssv: string; class_code: string | null; event_title: string; status: string; achieved: number; total: number }>(
+    `SELECT s.id,u.full_name,u.mssv,c.code class_code,e.title event_title,s.status,(SELECT COUNT(DISTINCT i.code) FROM event_criteria_items i LEFT JOIN submission_auto_results ar ON ar.submission_id=s.id AND ar.criteria_code=i.code AND ar.passed=1 LEFT JOIN submission_criteria_reviews cr ON cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=s.review_round AND cr.decision='pass' WHERE i.event_id=s.event_id AND (ar.id IS NOT NULL OR cr.submission_id IS NOT NULL)) achieved,(SELECT COUNT(*) FROM event_criteria_items i WHERE i.event_id=s.event_id) total FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id LEFT JOIN classes c ON c.id=s.class_id WHERE ${participantWhere.join(" AND ")} ORDER BY CAST(s.submitted_at AS DATETIME(3)) DESC,u.full_name`,
+    participantValues,
+  );
+
   const eligibleWhere: string[] = ["u.is_active=1", "u.role IN ('student','class_officer')", "cm.left_at IS NULL"];
   const eligibleValues: unknown[] = [];
   if (classId > 0) { eligibleWhere.push("cm.class_id=?"); eligibleValues.push(classId); }
   addCohortFilter(eligibleWhere, eligibleValues, params.cohort, "u.cohort");
   if (keyword) { eligibleWhere.push("(u.full_name LIKE ? OR u.mssv LIKE ?)"); eligibleValues.push(`%${keyword}%`, `%${keyword}%`); }
-  // A migration may not have been applied yet on an existing database. In that case
-  // the report stays available, but deliberately does not do live criteria evaluation.
-  const reportCacheAvailable = Boolean(await db.first<{available:number}>(`SELECT 1 AS available FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='report_assessment_cache' LIMIT 1`));
-  const reportProgressAvailable = reportCacheAvailable && Number((await db.first<{column_count:number}>(`SELECT COUNT(*) column_count FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='report_assessment_cache' AND column_name IN ('progress_percent','standard_progress_json')`))?.column_count??0)===2;
-  const cacheJoin = reportProgressAvailable ? `LEFT JOIN (SELECT ranked.* FROM (SELECT rac.user_id,rac.missing_required,rac.progress_percent,rac.standard_progress_json,cache_event.title event_title,ROW_NUMBER() OVER(PARTITION BY rac.user_id ORDER BY rac.is_eligible DESC,rac.progress_percent DESC,rac.event_id DESC) rn FROM report_assessment_cache rac INNER JOIN events cache_event ON cache_event.id=rac.event_id WHERE rac.assessment_type='student' AND cache_event.type='student' AND cache_event.term_id=? ${eventId>0?"AND cache_event.id=?":""}) ranked WHERE ranked.rn=1) cache ON cache.user_id=u.id` : reportCacheAvailable ? `LEFT JOIN (SELECT ranked.* FROM (SELECT rac.user_id,rac.missing_required,cache_event.title event_title,ROW_NUMBER() OVER(PARTITION BY rac.user_id ORDER BY rac.is_eligible DESC,rac.event_id DESC) rn FROM report_assessment_cache rac INNER JOIN events cache_event ON cache_event.id=rac.event_id WHERE rac.assessment_type='student' AND cache_event.type='student' AND cache_event.term_id=? ${eventId>0?"AND cache_event.id=?":""}) ranked WHERE ranked.rn=1) cache ON cache.user_id=u.id` : "";
-  const cacheValue = reportCacheAvailable ? "COALESCE(MAX(cache.missing_required),1)" : "1";
-  const cacheValues = reportCacheAvailable ? [selectedTerm.id, ...(eventId>0?[eventId]:[])] : [];
-  const progressSelect=reportProgressAvailable?"COALESCE(MAX(cache.progress_percent),0) progress_percent,MAX(cache.standard_progress_json) standard_progress_json,MAX(cache.event_title) event_title":reportCacheAvailable?"0 progress_percent,NULL standard_progress_json,MAX(cache.event_title) event_title":"0 progress_percent,NULL standard_progress_json,NULL event_title";
-  const potentialRows = await db.rows<PotentialRow>(`SELECT u.id,u.full_name,u.mssv,c.code class_code,${cacheValue} missing_required,${progressSelect} FROM users u INNER JOIN class_members cm ON cm.user_id=u.id INNER JOIN classes c ON c.id=cm.class_id ${cacheJoin} WHERE ${eligibleWhere.join(" AND ")} AND NOT EXISTS (SELECT 1 FROM submissions existing INNER JOIN events existing_event ON existing_event.id=existing.event_id WHERE existing.user_id=u.id AND existing.submitted_at IS NOT NULL AND existing_event.type='student' AND existing_event.term_id=? ${eventId>0?"AND existing_event.id=?":""}) GROUP BY u.id,u.full_name,u.mssv,c.code ORDER BY c.code,u.full_name`, [...cacheValues, ...eligibleValues, selectedTerm.id, ...(eventId>0?[eventId]:[])]);
-  const assessedPotentialRows = potentialRows;
-  const potentialAssessment = params.potentialStatus === "ready" || params.potentialStatus === "potential" ? params.potentialStatus : "";
-  const statusFilteredPotentialRows = potentialAssessment === "ready" ? assessedPotentialRows.filter((row) => row.missing_required === 0 && Number(row.progress_percent) >= 100 && String(row.standard_progress_json ?? "[]") !== "[]") : potentialAssessment === "potential" ? assessedPotentialRows.filter((row) => !(row.missing_required === 0 && Number(row.progress_percent) >= 100 && String(row.standard_progress_json ?? "[]") !== "[]")) : assessedPotentialRows;
-  const progressLevel=[50,70,90].includes(Number(params.progressLevel))?Number(params.progressLevel):0;
-  const filteredPotentialRows=statusFilteredPotentialRows.filter(row=>Number(row.progress_percent)>=progressLevel);
+  const nonParticipatedRow = activeTab === "analysis"
+    ? await db.first<{ total: number }>(
+        `SELECT COUNT(DISTINCT u.id) total FROM users u INNER JOIN class_members cm ON cm.user_id=u.id WHERE ${eligibleWhere.join(" AND ")} AND NOT EXISTS (SELECT 1 FROM submissions existing INNER JOIN events existing_event ON existing_event.id=existing.event_id WHERE existing.user_id=u.id AND existing.submitted_at IS NOT NULL AND existing_event.type='student' AND existing_event.term_id=? ${eventId > 0 ? "AND existing_event.id=?" : ""})`,
+        [...eligibleValues, selectedTerm.id, ...(eventId > 0 ? [eventId] : [])],
+      )
+    : undefined;
+  const nonParticipatedCount = Number(nonParticipatedRow?.total ?? 0);
+
   const participated = new Set(participantRows.map((item) => item.mssv)).size;
-  const criteriaRows = await db.rows<{event_id:number;event_title:string;standard_code:string;standard_label:string;code:string;label:string;is_required:number;total:number;passed:number}>(`SELECT e.id event_id,e.title event_title,g.code standard_code,g.title standard_label,i.code,i.title label,i.is_required,COUNT(DISTINCT s.id) total,COUNT(DISTINCT CASE WHEN ar.passed=1 OR cr.decision='pass' THEN s.id END) passed FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id INNER JOIN event_criteria_items i ON i.event_id=e.id INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code LEFT JOIN submission_auto_results ar ON ar.submission_id=s.id AND ar.criteria_code=i.code LEFT JOIN submission_criteria_reviews cr ON cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=s.review_round ${whereSql} GROUP BY e.id,e.title,g.code,g.title,i.code,i.title,i.is_required,g.sort_order,i.sort_order ORDER BY e.id,g.sort_order,i.sort_order`, values);
-  const participantPages = Math.max(1, Math.ceil(participantRows.length/PAGE_SIZE)), potentialPages = Math.max(1, Math.ceil(filteredPotentialRows.length/PAGE_SIZE));
-  const participantSlice = participantRows.slice((participantPage-1)*PAGE_SIZE, participantPage*PAGE_SIZE), potentialSlice = filteredPotentialRows.slice((potentialPage-1)*PAGE_SIZE, potentialPage*PAGE_SIZE);
+  const criteriaRows = await db.rows<{ event_id: number; event_title: string; standard_code: string; standard_label: string; code: string; label: string; is_required: number; total: number; passed: number }>(
+    `SELECT e.id event_id,e.title event_title,g.code standard_code,g.title standard_label,i.code,i.title label,i.is_required,COUNT(DISTINCT s.id) total,COUNT(DISTINCT CASE WHEN ar.passed=1 OR cr.decision='pass' THEN s.id END) passed FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id INNER JOIN event_criteria_items i ON i.event_id=e.id INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code LEFT JOIN submission_auto_results ar ON ar.submission_id=s.id AND ar.criteria_code=i.code LEFT JOIN submission_criteria_reviews cr ON cr.submission_id=s.id AND cr.criteria_code=i.code AND cr.round=s.review_round ${whereSql} GROUP BY e.id,e.title,g.code,g.title,i.code,i.title,i.is_required,g.sort_order,i.sort_order ORDER BY e.id,g.sort_order,i.sort_order`,
+    values,
+  );
+  const participantPages = Math.max(1, Math.ceil(participantRows.length / PAGE_SIZE));
+  const participantSlice = participantRows.slice((participantPage - 1) * PAGE_SIZE, participantPage * PAGE_SIZE);
 
-  const defaultEvent = eventId > 0 ? events.find(e => e.id === eventId) : events[0];
-  if (defaultEvent && potentialSlice.some(row => !row.standard_progress_json)) {
-    const targetCriteria = await db.rows<CriterionRow>(`
-      SELECT i.code, i.group_code, g.title group_title, i.is_required, g.min_required
-      FROM event_criteria_items i
-      INNER JOIN event_criteria_groups g ON g.event_id=i.event_id AND g.code=i.group_code
-      WHERE i.event_id=?
-      ORDER BY g.sort_order, i.sort_order
-    `, [defaultEvent.id]);
+  const commonParams = {
+    cohort: params.cohort,
+    termId: String(selectedTerm.id),
+    eventId: eventId > 0 ? String(eventId) : "",
+    classId: classId > 0 ? String(classId) : "",
+    keyword,
+    participantStatus: params.participantStatus,
+    tab: "tables",
+  };
 
-    if (targetCriteria.length > 0) {
-      for (const row of potentialSlice) {
-        if (!row.standard_progress_json) {
-          try {
-            const autoResults = await evaluateAutoCriteria({ eventId: defaultEvent.id, userId: row.id });
-            const passedCodes = new Set(autoResults.filter(r => r.passed).map(r => r.criteriaCode));
-            const assessed = assessStudentProgress(targetCriteria, passedCodes);
-            row.event_title = defaultEvent.title;
-            row.missing_required = assessed.missingRequired;
-            row.progress_percent = assessed.progressPercent;
-            row.standard_progress_json = JSON.stringify(assessed.standardProgress);
-            if (reportCacheAvailable) {
-              db.execute(`
-                INSERT INTO report_assessment_cache(event_id, user_id, assessment_type, achieved_criteria, total_criteria, missing_required, is_eligible, progress_percent, standard_progress_json, refreshed_at)
-                VALUES(?, ?, 'student', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3))
-                ON DUPLICATE KEY UPDATE achieved_criteria=VALUES(achieved_criteria), total_criteria=VALUES(total_criteria), missing_required=VALUES(missing_required), is_eligible=VALUES(is_eligible), progress_percent=VALUES(progress_percent), standard_progress_json=VALUES(standard_progress_json), refreshed_at=CURRENT_TIMESTAMP(3)
-              `, [defaultEvent.id, row.id, assessed.achieved, assessed.total, assessed.missingRequired, assessed.isEligible ? 1 : 0, assessed.progressPercent, row.standard_progress_json]).catch(() => {});
-            }
-          } catch (err) {
-            console.error("[student-awards] assessment error:", err);
+  if (activeTab === "tables") {
+    return (
+      <main className="space-y-6">
+        <ReportPageHeader title="Phân tích hồ sơ và xét thưởng sinh viên" compact termSelect={<AcademicTermSelect variant="header" terms={terms} selectedTermId={selectedTerm.id} />} />
+        <ReportTabs activeTab="tables" />
+        <TableSection
+          title="Danh sách sinh viên tham gia"
+          icon={<Award size={20} />}
+          exportButton={
+            <FilteredListExportButton
+              rows={participantRows.map((row) => ({
+                name: row.full_name,
+                mssv: row.mssv,
+                class: row.class_code ?? "—",
+                event: row.event_title,
+                criteria: `${row.achieved}/${row.total}`,
+                status: STATUS_LABELS[row.status] ?? row.status,
+              }))}
+              columns={[
+                { key: "name", label: "Họ tên" },
+                { key: "mssv", label: "MSSV" },
+                { key: "class", label: "Lớp" },
+                { key: "event", label: "Đợt xét" },
+                { key: "criteria", label: "Tiêu chí đạt" },
+                { key: "status", label: "Trạng thái" },
+              ]}
+              fileName="danh-sach-sinh-vien-tham-gia-xet.xlsx"
+            />
           }
-        }
-      }
-    }
+        >
+          <SubmissionReportTableFilter mode="participant" events={events} classes={classes} />
+          <div className="mt-5">
+            <TableParticipants rows={participantSlice} />
+          </div>
+          <Pagination totalResults={participantRows.length} resultLabel="sinh viên" page={participantPage} totalPages={participantPages} paramName="participantPage" searchParams={commonParams} />
+        </TableSection>
+      </main>
+    );
   }
-  const commonParams = { cohort:params.cohort, termId:String(selectedTerm.id), eventId:eventId>0?String(eventId):"", classId:classId>0?String(classId):"", keyword, potentialStatus:params.potentialStatus, progressLevel:params.progressLevel, participantStatus:params.participantStatus, tab:"tables" };
-  if (activeTab === "tables") return <main className="space-y-6"><ReportPageHeader title="Phân tích hồ sơ và xét thưởng sinh viên" compact termSelect={<AcademicTermSelect variant="header" terms={terms} selectedTermId={selectedTerm.id} />} /><ReportTabs activeTab="tables" /><TableSection title="Danh sách Sinh viên tiềm năng" icon={<Users size={20} />} exportButton={<FilteredListExportButton rows={potentialRows.map((row)=>({name:row.full_name,mssv:row.mssv,class:row.class_code,status:"Chưa tham gia xét"}))} columns={[{key:"name",label:"Họ tên"},{key:"mssv",label:"MSSV"},{key:"class",label:"Lớp"},{key:"status",label:"Tình trạng"}]} fileName="danh-sach-sinh-vien-tiem-nang.csv" />}><SubmissionReportTableFilter mode="potential" events={events} classes={classes} /><div className="mt-5"><TablePotential rows={potentialSlice} /></div><Pagination totalResults={potentialRows.length} resultLabel="sinh viên" page={potentialPage} totalPages={potentialPages} paramName="potentialPage" searchParams={commonParams} /></TableSection><TableSection title="Danh sách sinh viên tham gia" icon={<Award size={20} />} exportButton={<FilteredListExportButton rows={participantRows.map((row)=>({name:row.full_name,mssv:row.mssv,class:row.class_code,event:row.event_title,status:row.status,criteria:`${row.achieved}/${row.total}`}))} columns={[{key:"name",label:"Họ tên"},{key:"mssv",label:"MSSV"},{key:"class",label:"Lớp"},{key:"event",label:"Đợt xét"},{key:"criteria",label:"Tiêu chí đạt"},{key:"status",label:"Trạng thái"}]} fileName="danh-sach-sinh-vien-tham-gia-xet.csv" />}><SubmissionReportTableFilter mode="participant" events={events} classes={classes} /><div className="mt-5"><TableParticipants rows={participantSlice} /></div><Pagination totalResults={participantRows.length} resultLabel="sinh viên" page={participantPage} totalPages={participantPages} paramName="participantPage" searchParams={commonParams} /></TableSection></main>;
-  return <main className="space-y-6"><ReportPageHeader title="Phân tích hồ sơ và xét thưởng sinh viên" compact termSelect={<AcademicTermSelect variant="header" terms={terms} selectedTermId={selectedTerm.id} />} /><ReportTabs activeTab={activeTab} /><section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60"><StudentAwardReportFilter events={events} classes={classes} /></section>{activeTab === "analysis" ? <><section className="grid gap-6 xl:grid-cols-2"><ReportCard icon={<Users size={20} />} title="Mức độ tham gia đợt xét"><DonutChart centerLabel="sinh viên" items={[{label:"Đã tham gia xét",value:participated,className:"#2563eb"},{label:"Chưa tham gia xét",value:potentialRows.length,className:"#cbd5e1"}]} /></ReportCard><ReportCard icon={<Award size={20} />} title="Cơ cấu trạng thái hồ sơ"><DonutChart items={[{label:"Đạt",value:Number(summary.passed),className:"#16a34a"},{label:"Chờ duyệt",value:Number(summary.pending),className:"#2563eb"},{label:"Cần chỉnh sửa",value:Number(summary.needs_revision),className:"#f59e0b"},{label:"Không đạt",value:Number(summary.failed),className:"#e11d48"}]} /></ReportCard></section><ReportCard icon={<BarChart3 size={20} />} title="Phân tích mức độ đạt tiêu chuẩn và tiêu chí"><CriteriaAchievementComparisonChart page={criteriaPage} searchParams={{...commonParams,tab:"analysis"}} items={criteriaRows.map(item=>({label:`${item.code}. ${item.label}`,standardKey:`${item.event_id}:${item.standard_code}`,standardLabel:item.standard_label,eventTitle:item.event_title,isRequired:Number(item.is_required)===1,passed:Number(item.passed),total:Number(item.total)}))} /></ReportCard></> : <><ReportCard icon={<Users size={20} />} title="Sinh viên tiềm năng chưa tham gia xét"><TablePotential rows={potentialSlice} /><Pagination totalResults={potentialRows.length} resultLabel="sinh viên" page={potentialPage} totalPages={potentialPages} paramName="potentialPage" searchParams={commonParams} /></ReportCard><ReportCard icon={<Award size={20} />} title="Danh sách sinh viên tham gia xét"><TableParticipants rows={participantSlice} /><Pagination totalResults={participantRows.length} resultLabel="sinh viên" page={participantPage} totalPages={participantPages} paramName="participantPage" searchParams={commonParams} /></ReportCard></>}</main>;
+
+  return (
+    <main className="space-y-6">
+      <ReportPageHeader title="Phân tích hồ sơ và xét thưởng sinh viên" compact termSelect={<AcademicTermSelect variant="header" terms={terms} selectedTermId={selectedTerm.id} />} />
+      <ReportTabs activeTab={activeTab} />
+      <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60">
+        <StudentAwardReportFilter events={events} classes={classes} />
+      </section>
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ReportCard icon={<Users size={20} />} title="Mức độ tham gia đợt xét">
+          <DonutChart centerLabel="sinh viên" items={[{ label: "Đã tham gia xét", value: participated, className: "#2563eb" }, { label: "Chưa tham gia xét", value: nonParticipatedCount, className: "#cbd5e1" }]} />
+        </ReportCard>
+        <ReportCard icon={<Award size={20} />} title="Cơ cấu trạng thái hồ sơ">
+          <DonutChart items={[{ label: "Đạt", value: Number(summary.passed), className: "#16a34a" }, { label: "Chờ duyệt", value: Number(summary.pending), className: "#2563eb" }, { label: "Cần chỉnh sửa", value: Number(summary.needs_revision), className: "#f59e0b" }, { label: "Không đạt", value: Number(summary.failed), className: "#e11d48" }]} />
+        </ReportCard>
+      </section>
+      <ReportCard icon={<BarChart3 size={20} />} title="Phân tích mức độ đạt tiêu chuẩn và tiêu chí">
+        <CriteriaAchievementComparisonChart page={criteriaPage} searchParams={{ ...commonParams, tab: "analysis" }} items={criteriaRows.map((item) => ({ label: `${item.code}. ${item.label}`, standardKey: `${item.event_id}:${item.standard_code}`, standardLabel: item.standard_label, eventTitle: item.event_title, isRequired: Number(item.is_required) === 1, passed: Number(item.passed), total: Number(item.total) }))} />
+      </ReportCard>
+    </main>
+  );
 }
 
-function ReportCard({icon,title,children}:{icon:React.ReactNode;title:string;children:React.ReactNode}) { return <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">{icon}</div><h2 className="text-xl font-semibold text-slate-900">{title}</h2></div><div className="mt-6">{children}</div></section>; }
-function TableSection({title,exportButton,children}:{title:string;icon:React.ReactNode;exportButton:React.ReactNode;children:React.ReactNode}) { return <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="min-w-0 text-xl font-semibold text-slate-900">{title}</h2><div className="shrink-0">{exportButton}</div></div><div className="report-student-table-filter-gap"><div aria-hidden="true" className="h-7" />{children}</div></section>; }
-function TableParticipants({rows}:{rows:Array<{id:number;full_name:string;mssv:string;class_code:string|null;event_title:string;status:string;achieved:number;total:number}>}) { const labels:Record<string,string>={passed:"Đạt",failed:"Không đạt",submitted_v1:"Chờ duyệt vòng 1",submitted_v2:"Chờ duyệt vòng 2",needs_revision_v1:"Cần chỉnh sửa",needs_revision_v2:"Cần chỉnh sửa"}; return <div data-table-frame className="overflow-hidden rounded-none border border-slate-200"><NumberedTable className="w-full table-fixed"><thead className="bg-slate-50"><tr><th className="w-[26%] px-4 py-3 text-left text-sm font-semibold">Sinh viên</th><th className="w-[12%] px-4 py-3 text-left text-sm font-semibold">Lớp</th><th className="w-[25%] px-4 py-3 text-left text-sm font-semibold">Đợt xét</th><th className="w-[17%] px-4 py-3 text-center text-sm font-semibold">Tiêu chí đạt</th><th className="w-[20%] px-4 py-3 text-center text-sm font-semibold">Trạng thái</th></tr></thead><tbody>{rows.map(row=><tr key={row.id} className="border-t border-slate-100"><td className="px-4 py-3"><div className="font-semibold">{row.full_name}</div><div className="text-xs text-slate-500">{row.mssv}</div></td><td className="px-4 py-3 text-left">{row.class_code??"—"}</td><td className="px-4 py-3 text-left">{row.event_title}</td><td className="px-4 py-3 text-center font-semibold">{row.achieved}/{row.total}</td><td className="px-4 py-3 text-center"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{labels[row.status]??row.status}</span></td></tr>)}{!rows.length?<tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">Không có sinh viên tham gia xét.</td></tr>:null}</tbody></NumberedTable></div>; }
+function ReportCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">{icon}</div><h2 className="text-xl font-semibold text-slate-900">{title}</h2></div><div className="mt-6">{children}</div></section>;
+}
+
+function TableSection({ title, exportButton, children }: { title: string; icon: React.ReactNode; exportButton: React.ReactNode; children: React.ReactNode }) {
+  return <section className="rounded-3xl bg-white p-6 shadow-md ring-1 ring-slate-100 shadow-slate-200/60"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="min-w-0 text-xl font-semibold text-slate-900">{title}</h2><div className="shrink-0">{exportButton}</div></div><div className="report-student-table-filter-gap"><div aria-hidden="true" className="h-7" />{children}</div></section>;
+}
+
+function TableParticipants({ rows }: { rows: Array<{ id: number; full_name: string; mssv: string; class_code: string | null; event_title: string; status: string; achieved: number; total: number }> }) {
+  return (
+    <div data-table-frame className="overflow-hidden rounded-none border border-slate-200">
+      <NumberedTable className="w-full table-fixed">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="w-[26%] px-4 py-3 text-left text-sm font-semibold">Sinh viên</th>
+            <th className="w-[12%] px-4 py-3 text-left text-sm font-semibold">Lớp</th>
+            <th className="w-[25%] px-4 py-3 text-left text-sm font-semibold">Đợt xét</th>
+            <th className="w-[17%] px-4 py-3 text-center text-sm font-semibold">Tiêu chí đạt</th>
+            <th className="w-[20%] px-4 py-3 text-center text-sm font-semibold">Trạng thái</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-t border-slate-100">
+              <td className="px-4 py-3"><div className="font-semibold">{row.full_name}</div><div className="text-xs text-slate-500">{row.mssv}</div></td>
+              <td className="px-4 py-3 text-left">{row.class_code ?? "—"}</td>
+              <td className="px-4 py-3 text-left">{row.event_title}</td>
+              <td className="px-4 py-3 text-center font-semibold">{row.achieved}/{row.total}</td>
+              <td className="px-4 py-3 text-center"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{STATUS_LABELS[row.status] ?? row.status}</span></td>
+            </tr>
+          ))}
+          {!rows.length ? <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">Không có sinh viên tham gia xét.</td></tr> : null}
+        </tbody>
+      </NumberedTable>
+    </div>
+  );
+}

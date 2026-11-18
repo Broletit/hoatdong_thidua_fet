@@ -255,7 +255,7 @@ export default async function OfficerAchievementsReportPage({
           AND existing_event.term_id = ?
           ${eventId > 0 ? "AND existing_event.id = ?" : ""}
       )
-    GROUP BY u.id
+    GROUP BY u.id, u.full_name, u.mssv
   `, [...eligibleOfficerValues, selectedTerm.id, ...(eventId > 0 ? [eventId] : [])])) as Array<{
     id: number;
     full_name: string;
@@ -418,7 +418,7 @@ export default async function OfficerAchievementsReportPage({
       LEFT JOIN classes c ON c.id = cm.class_id
       ${whereSql}
         AND s.status = 'passed'
-      GROUP BY s.id
+      GROUP BY s.id, s.score_total, s.status, e.id, e.score_max, e.title, u.full_name, u.mssv
       ORDER BY s.score_total DESC, normalized_score DESC, u.full_name ASC
       `, [...values])) as Omit<OfficerRow, "rank_no">[];
 
@@ -430,7 +430,7 @@ export default async function OfficerAchievementsReportPage({
   const participantWhere = [...where];
   const participantValues = [...values];
   if (params.participantStatus) { participantWhere.push("s.status=?"); participantValues.push(params.participantStatus); }
-  const participantRows = (await db.rows(`SELECT s.id,u.full_name,u.mssv,GROUP_CONCAT(c.code SEPARATOR ', ') class_codes,e.title event_title,s.status FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id LEFT JOIN class_members cm ON cm.user_id=u.id AND cm.left_at IS NULL LEFT JOIN classes c ON c.id=cm.class_id WHERE ${participantWhere.join(" AND ")} GROUP BY s.id ORDER BY CAST(s.submitted_at AS DATETIME(3)) DESC,u.full_name`, participantValues)) as Array<{id:number;full_name:string;mssv:string;class_codes:string|null;event_title:string;status:string}>;
+  const participantRows = (await db.rows(`SELECT s.id,u.full_name,u.mssv,GROUP_CONCAT(c.code SEPARATOR ', ') class_codes,e.title event_title,s.status FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN users u ON u.id=s.user_id LEFT JOIN class_members cm ON cm.user_id=u.id AND cm.left_at IS NULL LEFT JOIN classes c ON c.id=cm.class_id WHERE ${participantWhere.join(" AND ")} GROUP BY s.id,u.full_name,u.mssv,e.title,s.status,s.submitted_at ORDER BY CAST(s.submitted_at AS DATETIME(3)) DESC,u.full_name`, participantValues)) as Array<{id:number;full_name:string;mssv:string;class_codes:string|null;event_title:string;status:string}>;
   const participantTotalPages = Math.max(1, Math.ceil(participantRows.length / PAGE_SIZE));
   const participantTableRows = participantRows.slice((participantPage - 1) * PAGE_SIZE, participantPage * PAGE_SIZE);
 

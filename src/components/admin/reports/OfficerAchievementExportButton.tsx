@@ -52,12 +52,13 @@ export default function OfficerAchievementExportButton({
     <div ref={ref} className="relative">
       <button
         type="button"
+        data-no-loading
         disabled={pending}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
+        className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Download size={16} />
-        Xuất danh sách
+        {pending ? "Đang xuất..." : "Xuất danh sách"}
         <ChevronDown size={15} />
       </button>
 

@@ -31,6 +31,32 @@ export default function StudentsImportFileUploader({ onParsedRowsChange, validat
   const [rows, setRows] = useState<string[][]>([]);
   const [error, setError] = useState("");
   const [parsing, setParsing] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+  async function handleDownloadTemplate() {
+    if (downloadingTemplate) return;
+    setDownloadingTemplate(true);
+    try {
+      const response = await fetch("/templates/mau-import-sinh-vien.xlsx?v=20261017-ddmmyyyy");
+      if (!response.ok) throw new Error("Không thể tải file mẫu.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "mau-import-sinh-vien.xlsx";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      window.setTimeout(() => {
+        link.remove();
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể tải file mẫu.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -60,9 +86,16 @@ export default function StudentsImportFileUploader({ onParsedRowsChange, validat
       <ActionFeedback pending={parsing} message={error} />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <h2 className="text-lg font-semibold text-slate-900">Upload file sinh viên<RequiredMark/></h2>
-        <a href="/templates/mau-import-sinh-vien.xlsx?v=20261017-ddmmyyyy" download="mau-import-sinh-vien.xlsx" className="inline-flex items-center gap-2 rounded-xl bg-amber-300 px-4 py-2 text-sm font-medium text-amber-950 transition hover:bg-amber-200">
-          <Download size={16} />Tải file mẫu
-        </a>
+        <button
+          type="button"
+          data-no-loading
+          disabled={downloadingTemplate}
+          onClick={handleDownloadTemplate}
+          className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Download size={16} />
+          {downloadingTemplate ? "Đang tải..." : "Tải file mẫu"}
+        </button>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">

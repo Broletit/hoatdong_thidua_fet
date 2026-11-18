@@ -37,38 +37,41 @@ export default function MaintenanceClient({
       />
 
       {/* Top Header with Trio of Logos: logotrang -> logodoan -> logohoi */}
-      <header className="relative z-10 flex w-full max-w-6xl items-center justify-between px-6 pt-8 sm:px-8">
-        <div className="flex items-center gap-3 sm:gap-4 md:gap-5 flex-nowrap">
+      <header className="relative z-10 flex w-full max-w-6xl items-center justify-center sm:justify-between px-6 pt-8 sm:px-8">
+        <div className="flex items-center justify-center sm:justify-start gap-2.5 sm:gap-4 md:gap-5 flex-nowrap">
           <Image
             src="/logotrang.png"
             alt="Logo Khoa Công nghệ Điện tử - IUH"
             width={3088}
             height={520}
-            className="h-10 w-auto max-w-[170px] sm:max-w-none sm:h-12 object-contain object-left shrink-0"
+            className="h-9 w-auto max-w-[220px] sm:max-w-none sm:h-12 object-contain object-center sm:object-left shrink-0"
             priority
+            unoptimized
           />
           <Image
             src="/logodoan.png"
             alt="Huy hiệu Đoàn TNCS Hồ Chí Minh"
             width={2508}
             height={2755}
-            className="h-8.5 w-auto sm:h-10 object-contain shrink-0"
+            className="h-7 w-auto sm:h-10 object-contain shrink-0"
             priority
+            unoptimized
           />
           <Image
             src="/logohoi.png"
             alt="Biểu trưng Hội Sinh viên Việt Nam"
             width={1403}
             height={1414}
-            className="h-8.5 w-auto sm:h-10 object-contain shrink-0"
+            className="h-7 w-auto sm:h-10 object-contain shrink-0"
             priority
+            unoptimized
           />
         </div>
 
         {!isMaintenanceMode ? (
           <Link
             href="/login"
-            className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/25 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 bg-[length:200%_100%] px-4 py-2 text-xs font-semibold text-white shadow-[0_4px_20px_rgba(37,99,235,0.45)] transition-all duration-300 hover:bg-[position:100%_0] hover:border-white/50 hover:shadow-[0_0_25px_rgba(99,102,241,0.65)] hover:scale-[1.03] active:scale-95"
+            className="group relative hidden sm:inline-flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/25 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 bg-[length:200%_100%] px-4 py-2 text-xs font-semibold text-white shadow-[0_4px_20px_rgba(37,99,235,0.45)] transition-all duration-300 hover:bg-[position:100%_0] hover:border-white/50 hover:shadow-[0_0_25px_rgba(99,102,241,0.65)] hover:scale-[1.03] active:scale-95"
           >
             {/* Shimmer light sweep on hover */}
             <span
@@ -83,7 +86,7 @@ export default function MaintenanceClient({
             />
           </Link>
         ) : (
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3.5 py-1.5 text-xs font-medium text-amber-300 backdrop-blur-md">
+          <div className="hidden sm:inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3.5 py-1.5 text-xs font-medium text-amber-300 backdrop-blur-md">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
