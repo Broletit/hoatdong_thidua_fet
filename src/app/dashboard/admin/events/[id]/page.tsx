@@ -167,25 +167,38 @@ export default async function AdminEventDetailPage({
             </div>
           </div>
 
-          <div className="flex w-full flex-col items-stretch gap-2 lg:w-auto lg:gap-3">
-            <div className="flex flex-wrap gap-2 lg:gap-3">
-              {Boolean(event.term_is_active) ? <Link
-                href="/dashboard/admin/events"
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15 lg:min-h-0 lg:flex-none"
-               data-back-link>
-                <ArrowLeft size={16} />
-                Quay về
-              </Link> : null}
+          <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:min-w-[300px]">
+            <div className={`grid ${Boolean(event.term_is_active) ? "grid-cols-2" : "grid-cols-1"} gap-2 w-full`}>
+              {Boolean(event.term_is_active) ? (
+                <Link
+                  href="/dashboard/admin/events"
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20 ring-1 ring-white/15"
+                >
+                  <ArrowLeft size={16} />
+                  <span>Quay về</span>
+                </Link>
+              ) : null}
 
               <Link
                 href={`/dashboard/admin/events/${event.id}/edit`}
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-sm font-semibold text-blue-900 transition hover:bg-blue-50 lg:min-h-0 lg:flex-none"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-3 text-sm font-semibold text-blue-900 transition hover:bg-blue-50 shadow-xs"
               >
                 <Pencil size={16} />
-                Chỉnh sửa
+                <span>Chỉnh sửa</span>
               </Link>
             </div>
-            <Link href={event.type === "officer" ? `/dashboard/admin/reports/officer-achievements?termId=${event.term_id}&eventId=${event.id}` : `/dashboard/admin/reports/student-awards?termId=${event.term_id}&eventId=${event.id}`} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 py-2 text-sm font-medium text-amber-950 transition hover:bg-amber-200"><BarChart3 size={16} />{event.type === "officer" ? "Phân tích và xếp hạng cán bộ" : "Phân tích hồ sơ và ứng viên"}</Link>
+
+            <Link
+              href={
+                event.type === "officer"
+                  ? `/dashboard/admin/reports/officer-achievements?termId=${event.term_id}&eventId=${event.id}`
+                  : `/dashboard/admin/reports/student-awards?termId=${event.term_id}&eventId=${event.id}`
+              }
+              className="inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-amber-300 px-4 text-sm font-semibold text-amber-950 transition hover:bg-amber-200 shadow-xs"
+            >
+              <BarChart3 size={16} />
+              <span>{event.type === "officer" ? "Phân tích và xếp hạng cán bộ" : "Phân tích hồ sơ và ứng viên"}</span>
+            </Link>
           </div>
         </div>
       </section>

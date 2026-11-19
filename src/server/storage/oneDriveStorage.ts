@@ -52,7 +52,7 @@ export class OneDriveStorageProvider implements StorageProvider {
   private cachedDriveId?: string;
   private verifiedFolders = new Set<string>();
 
-  constructor(private readonly config?: OneDriveConfig) {}
+  constructor(private readonly config?: OneDriveConfig) { }
 
   private get settings() {
     return this.config ?? getOneDriveConfig();

@@ -1,6 +1,6 @@
 import statCardStyles from "@/components/shared/statistics/StatCard.module.css";
 import Link from "next/link";
-import { BarChart3, CheckCircle2, ClipboardCheck, Clock3, Users } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardCheck, Users } from "lucide-react";
 import PaginationArrow from "@/components/common/PaginationArrow";
 import { requireClassOfficerContext } from "@/server/auth/guards";
 import { getDatabase } from "@/server/db/mysql";
@@ -17,7 +17,6 @@ type Summary = {
   registered_students: number;
   attended_students: number;
   submitted_students: number;
-  pending_reviews: number;
 };
 type ActivityRow = { id: number; title: string; registered: number; attended: number };
 type StatusRow = { status: string; total: number };
@@ -52,9 +51,8 @@ export default async function ClassOfficerDashboardPage({ searchParams }: { sear
       (SELECT COUNT(DISTINCT cm.user_id) FROM class_members cm INNER JOIN users u ON u.id=cm.user_id WHERE cm.class_id IN (${placeholders}) AND cm.left_at IS NULL AND u.role='class_officer' AND u.is_active=1) class_officers,
       (SELECT COUNT(DISTINCT ar.user_id) FROM activity_registrations ar INNER JOIN activities a ON a.id=ar.activity_id INNER JOIN class_members cm ON cm.user_id=ar.user_id WHERE cm.class_id IN (${placeholders}) AND cm.left_at IS NULL AND a.term_id=? AND a.audience_type='student' AND ar.status<>'cancelled') registered_students,
       (SELECT COUNT(DISTINCT ar.user_id) FROM activity_registrations ar INNER JOIN activities a ON a.id=ar.activity_id INNER JOIN class_members cm ON cm.user_id=ar.user_id WHERE cm.class_id IN (${placeholders}) AND cm.left_at IS NULL AND a.term_id=? AND a.audience_type='student' AND ar.status='attended') attended_students,
-      (SELECT COUNT(DISTINCT s.user_id) FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN class_members cm ON cm.user_id=s.user_id WHERE cm.class_id IN (${placeholders}) AND cm.left_at IS NULL AND e.term_id=? AND e.type='student' AND s.submitted_at IS NOT NULL) submitted_students,
-      (SELECT COUNT(*) FROM submissions s INNER JOIN events e ON e.id=s.event_id WHERE s.class_id IN (${placeholders}) AND e.term_id=? AND e.type='student' AND s.status='submitted_v1') pending_reviews
-  `, [...classIds, ...classIds, ...classIds, term.id, ...classIds, term.id, ...classIds, term.id, ...classIds, term.id])) as Summary : { students: 0, class_officers: 0, registered_students: 0, attended_students: 0, submitted_students: 0, pending_reviews: 0 };
+      (SELECT COUNT(DISTINCT s.user_id) FROM submissions s INNER JOIN events e ON e.id=s.event_id INNER JOIN class_members cm ON cm.user_id=s.user_id WHERE cm.class_id IN (${placeholders}) AND cm.left_at IS NULL AND e.term_id=? AND e.type='student' AND s.submitted_at IS NOT NULL) submitted_students
+  `, [...classIds, ...classIds, ...classIds, term.id, ...classIds, term.id, ...classIds, term.id])) as Summary : { students: 0, class_officers: 0, registered_students: 0, attended_students: 0, submitted_students: 0 };
 
   const activityPageSize = 5;
   const requestedActivityPage = Number(params.activityPage ?? "1");
@@ -128,11 +126,10 @@ export default async function ClassOfficerDashboardPage({ searchParams }: { sear
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Stat icon={<Users size={20} />} label="Đang hoạt động" value={studentCount} detail={`${studentMembers} sinh viên · ${classOfficerMembers} cán bộ lớp`} />
         <Stat icon={<CheckCircle2 size={20} />} label="Đã tham gia hoạt động" value={`${participationRate}%`} detail={`${summary.attended_students}/${studentCount} sinh viên`} />
         <Stat icon={<ClipboardCheck size={20} />} label="Đã nộp hồ sơ xét" value={`${submissionRate}%`} detail={`${summary.submitted_students}/${studentCount} sinh viên`} />
-        <Stat icon={<Clock3 size={20} />} label="Đang chờ duyệt vòng 1" value={summary.pending_reviews} detail="Hồ sơ cần xử lý" />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
