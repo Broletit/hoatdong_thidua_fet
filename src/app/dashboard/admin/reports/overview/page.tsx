@@ -62,7 +62,7 @@ export default async function AdminOverviewReportPage({
         LEFT JOIN activities a
           ON a.id = ar.activity_id AND a.term_id = ?
         WHERE c.is_active = 1
-        GROUP BY c.id
+        GROUP BY c.id, c.code, c.name
       )
       SELECT
         code AS label,
@@ -85,7 +85,7 @@ export default async function AdminOverviewReportPage({
         INNER JOIN events e ON e.id = s.event_id
         LEFT JOIN classes c ON c.id = s.class_id
         WHERE e.type = 'student' AND e.term_id = ? AND ${cohortClause(params.cohort,"(SELECT cohort FROM users WHERE id=s.user_id)")}
-        GROUP BY c.id
+        GROUP BY c.id, c.code
       )
       SELECT
         class_code AS label,

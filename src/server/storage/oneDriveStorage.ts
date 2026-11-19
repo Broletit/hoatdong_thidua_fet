@@ -371,71 +371,94 @@ export class OneDriveStorageProvider implements StorageProvider {
     return { ...metadata, stream: response.body };
   }
 
+  async readBuffer(key: string): Promise<Buffer> {
+    const driveId = await this.getDriveId();
+    const token = await this.accessToken();
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${this.path(key)}:/content`;
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      throw new Error(`Không thể đọc nội dung tệp từ OneDrive (${response.status}).`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
   /**
-   * Lấy đường dẫn tải trực tiếp phát xuất từ hạ tầng OneDrive/SharePoint CDN của Microsoft.
-   * Người dùng khi bấm xem file sẽ được chuyển hướng 302 trực tiếp sang URL này,
-   * hoàn toàn không qua server máy chủ host trung gian.
+   * Lấy đường dẫn xem trực tiếp (Preview / View URL) từ OneDrive/SharePoint thông qua Microsoft Graph API.
+   * Người dùng khi bấm xem minh chứng sẽ mở ở tab mới và hiển thị trực tiếp trình xem của OneDrive
+   * (không tự động tải tệp về máy và không đi qua máy chủ host trung gian).
    */
   async getDirectUrl(key: string): Promise<string> {
     const driveId = await this.getDriveId();
     const token = await this.accessToken();
     const encodedPath = this.path(key);
 
-    // 1. Lấy @microsoft.graph.downloadUrl từ metadata của item (URL tải trực tiếp có pre-auth SAS token của Microsoft)
+    // 1. Lấy thông tin Drive Item ID từ path (Microsoft Graph các thao tác preview/createLink đều yêu cầu /items/{id})
+    let itemId: string | undefined;
     try {
-      const metaUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:?$select=id,@microsoft.graph.downloadUrl`;
-      const metaRes = await fetch(metaUrl, {
+      const itemUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:?$select=id,webUrl`;
+      const itemRes = await fetch(itemUrl, {
         headers: { authorization: `Bearer ${token}` },
       });
-      if (metaRes.ok) {
-        const data = (await metaRes.json()) as GraphItem;
-        if (data["@microsoft.graph.downloadUrl"]) {
-          return data["@microsoft.graph.downloadUrl"];
-        }
+      if (itemRes.ok) {
+        const itemData = (await itemRes.json()) as { id?: string; webUrl?: string };
+        itemId = itemData.id;
       }
-    } catch (err) {
-      console.warn("[OneDrive] getDirectUrl metadata fetch failed:", err);
+    } catch (e) {
+      console.warn("[OneDrive] getDirectUrl: Không lấy được item ID:", e);
     }
 
-    // 2. Fallback: Gọi đến :/content với redirect: manual để lấy Location header 302 của Microsoft CDN
-    try {
-      const contentUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:/content`;
-      const contentRes = await fetch(contentUrl, {
-        method: "GET",
-        headers: { authorization: `Bearer ${token}` },
-        redirect: "manual",
-      });
-
-      const location = contentRes.headers.get("location");
-      if (location) {
-        return location;
-      }
-    } catch (err) {
-      console.warn("[OneDrive] getDirectUrl content redirect failed:", err);
-    }
-
-    // 3. Fallback 3: Tạo link xem (view link)
-    try {
-      const shareUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root:/${encodedPath}:/createLink`;
-      const shareRes = await fetch(shareUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          type: "view",
-          scope: "anonymous",
-        }),
-      });
-      if (shareRes.ok) {
-        const shareData = (await shareRes.json()) as { link?: { webUrl?: string } };
-        if (shareData.link?.webUrl) {
-          return shareData.link.webUrl;
+    // 2. Ưu tiên số 1: Gọi Microsoft Graph /preview API với itemId để lấy URL xem trực tiếp (embed view) của OneDrive
+    if (itemId) {
+      try {
+        const previewUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}/preview`;
+        const previewRes = await fetch(previewUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ zoom: 1 }),
+        });
+        if (previewRes.ok) {
+          const previewData = (await previewRes.json()) as { getUrl?: string };
+          if (previewData.getUrl) {
+            return previewData.getUrl;
+          }
+        } else {
+          const errText = await previewRes.text().catch(() => "");
+          console.warn(`[OneDrive] /preview API returned ${previewRes.status}:`, errText);
         }
+      } catch (err) {
+        console.warn("[OneDrive] getDirectUrl /preview fetch failed:", err);
       }
-    } catch (err) {
-      console.warn("[OneDrive] getDirectUrl createLink fallback failed:", err);
+
+      // 3. Fallback: Tạo link xem trực tiếp trên OneDrive (type: "view", scope: "anonymous")
+      try {
+        const shareUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}/createLink`;
+        const shareRes = await fetch(shareUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "view",
+            scope: "anonymous",
+          }),
+        });
+        if (shareRes.ok) {
+          const shareData = (await shareRes.json()) as { link?: { webUrl?: string } };
+          if (shareData.link?.webUrl) {
+            return shareData.link.webUrl;
+          }
+        }
+      } catch (err) {
+        console.warn("[OneDrive] getDirectUrl createLink fallback failed:", err);
+      }
     }
 
     throw new Error("Không thể tạo liên kết xem trực tiếp từ OneDrive.");

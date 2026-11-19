@@ -78,6 +78,8 @@ export default async function AdminEventDetailPage({
           SELECT COUNT(*)
           FROM submissions s
           WHERE s.event_id = e.id
+            AND s.status <> 'draft'
+            AND s.submitted_at IS NOT NULL
         ) AS submissions
 
       FROM events e

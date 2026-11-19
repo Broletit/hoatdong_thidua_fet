@@ -95,6 +95,8 @@ export default async function AdminEventsPage({
           SELECT COUNT(*)
           FROM submissions s
           WHERE s.event_id = e.id
+            AND s.status <> 'draft'
+            AND s.submitted_at IS NOT NULL
         ) AS submissions
       FROM events e
       LEFT JOIN criteria_templates ct ON ct.id = e.criteria_template_id

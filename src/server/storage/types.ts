@@ -6,6 +6,7 @@ export interface StorageProvider {
   put(key: string, content: Buffer, mimeType: string): Promise<ObjectMetadata>;
   head(key: string): Promise<ObjectMetadata>;
   read(key: string): Promise<StoredObject>;
+  readBuffer?(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
   getDirectUrl?(key: string): Promise<string>;
 }

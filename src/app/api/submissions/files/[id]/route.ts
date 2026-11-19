@@ -15,7 +15,17 @@ async function findFile(id: string) {
     FROM submission_files sf JOIN submissions s ON s.id=sf.submission_id
     WHERE sf.id=? AND sf.status='ready' AND sf.deleted_at IS NULL`, [numeric]);
 }
-export async function GET(_: Request, context: {params:Promise<{id:string}>}) {
+function resolveMimeType(originalName: string, recordedMime: string | null | undefined): string {
+  const ext = (originalName || "").split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  if (recordedMime && recordedMime !== "application/octet-stream") return recordedMime;
+  return "application/octet-stream";
+}
+
+export async function GET(request: Request, context: {params:Promise<{id:string}>}) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({message:"Vui lòng đăng nhập."}, {status:401});
   const file = await findFile((await context.params).id);
@@ -23,8 +33,11 @@ export async function GET(_: Request, context: {params:Promise<{id:string}>}) {
   if (!await canReadSubmissionFile(getDatabase(), user, file)) return NextResponse.json({message:"Bạn không có quyền xem tệp này."}, {status:403});
   const provider = getStorageProvider(file.storage_provider);
 
-  // Nếu lưu trữ bằng OneDrive, chuyển hướng 302 trực tiếp sang URL phát xuất từ OneDrive/Microsoft CDN
-  if (typeof provider.getDirectUrl === "function") {
+  const url = new URL(request.url);
+  const isForceDownload = url.searchParams.get("download") === "1";
+
+  // Nếu người dùng không ép buộc download, thử dùng Microsoft Graph preview URL nếu khả dụng
+  if (!isForceDownload && typeof provider.getDirectUrl === "function") {
     try {
       const directUrl = await provider.getDirectUrl(file.object_key);
       if (directUrl) {
@@ -36,17 +49,42 @@ export async function GET(_: Request, context: {params:Promise<{id:string}>}) {
         });
       }
     } catch (directErr) {
-      console.warn("[Storage] Direct URL redirect failed, falling back to stream:", directErr);
+      console.warn("[Storage] Direct preview URL unavailable, streaming inline via API:", directErr);
     }
   }
 
+  // Phục vụ tệp trực tiếp từ Storage (OneDrive hoặc Local) hiển thị inline trên trình duyệt
   try {
+    const mime = resolveMimeType(file.original_name, file.mime_type);
+    const cleanAscii = (file.original_name || "evidence")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]/g, "_");
+
+    const dispositionType = isForceDownload ? "attachment" : "inline";
+    const disposition = `${dispositionType}; filename="${cleanAscii}"; filename*=UTF-8''${encodeURIComponent(file.original_name)}`;
+
+    if (typeof provider.readBuffer === "function") {
+      const buffer = await provider.readBuffer(file.object_key);
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type": mime,
+          "Content-Length": String(buffer.length),
+          "Content-Disposition": disposition,
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
+    }
+
     const object = await provider.read(file.object_key);
-    return new NextResponse(object.stream, {headers:{
-      "Content-Type":file.mime_type, "Content-Length":String(object.size),
-      "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff",
-      "Content-Disposition":`inline; filename*=UTF-8''${encodeURIComponent(file.original_name)}`,
-    }});
+    return new NextResponse(object.stream, {
+      headers: {
+        "Content-Type": mime,
+        "Content-Length": String(object.size),
+        "Content-Disposition": disposition,
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return NextResponse.json({message:"Không tìm thấy tệp."}, {status:404});
     throw error;

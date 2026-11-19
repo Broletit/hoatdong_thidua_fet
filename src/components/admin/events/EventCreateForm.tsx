@@ -46,6 +46,15 @@ export default function EventCreateForm({
 
     try {
       const result = await createEvent(formData);
+      if (!result.ok) {
+        return {
+          ok: false,
+          message: result.message || "Tạo đợt xét thất bại.",
+          revision: prev.revision + 1,
+          field: getErrorFieldFromMessage(result.message),
+          values,
+        };
+      }
       return {
         ok: true,
         message: result.message,
@@ -53,11 +62,12 @@ export default function EventCreateForm({
         values,
       };
     } catch (error) {
+      const msg = error instanceof Error ? error.message : "Tạo đợt xét thất bại.";
       return {
         ok: false,
-        message: error instanceof Error ? error.message : "Tạo đợt xét thất bại.",
+        message: msg,
         revision: prev.revision + 1,
-        field: getErrorField(error),
+        field: getErrorFieldFromMessage(msg),
         values,
       };
     }
@@ -224,11 +234,11 @@ export default function EventCreateForm({
   );
 }
 
-function getErrorField(error: unknown): State["field"] {
-  const message = error instanceof Error ? error.message.toLowerCase() : "";
+function getErrorFieldFromMessage(rawMessage: string): State["field"] {
+  const message = rawMessage.toLowerCase();
   if (message.includes("tên đợt xét")) return "title";
   if (message.includes("đối tượng")) return "type";
-  if (message.includes("mẫu tiêu chuẩn")) return "templateId";
+  if (message.includes("mẫu tiêu chuẩn") || message.includes("bộ tiêu chuẩn") || message.includes("tiêu chuẩn")) return "templateId";
   if (message.includes("trạng thái")) return "status";
   if (message.includes("điểm tối đa")) return "scoreMax";
   if (message.includes("thời gian mở")) return "startAt";
