@@ -171,11 +171,15 @@ export async function OfficerSubmissionDetailPageView({
       AND EXISTS(SELECT 1 FROM submission_files sf WHERE sf.evidence_unit_id = eu.id AND sf.status = 'ready' AND sf.deleted_at IS NULL)
     ORDER BY eu.id ASC
   `, [submissionId]));
-  const criteriaWithFiles = criteria.map(item=>({
-    ...item,
-    evidence_files:evidenceFiles.filter(file=>file.criteria_code===item.code).map(file=>({id:file.id,fileName:file.file_name,mimeType:file.mime_type})),
-    evidence_units:unitRows.filter(u=>u.criteria_code===item.code).map(u=>({id:Number(u.id),note:u.note,fileId:u.file_id?Number(u.file_id):null,fileName:u.file_name,reviewDecision:u.review_decision})),
-  }));
+  const criteriaWithFiles = criteria.map(item => {
+    const matchedFiles = evidenceFiles.filter(file => file.criteria_code === item.code);
+    return {
+      ...item,
+      file_id: matchedFiles[0]?.id ?? null,
+      evidence_files: matchedFiles.map(file => ({ id: file.id, fileName: file.file_name, mimeType: file.mime_type })),
+      evidence_units: unitRows.filter(u => u.criteria_code === item.code).map(u => ({ id: Number(u.id), note: u.note, fileId: u.file_id ? Number(u.file_id) : null, fileName: u.file_name, reviewDecision: u.review_decision })),
+    };
+  });
 
   const reviews = (await db.rows(`
       SELECT round, decision, note

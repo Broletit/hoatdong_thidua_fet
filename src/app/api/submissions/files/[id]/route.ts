@@ -36,24 +36,7 @@ export async function GET(request: Request, context: {params:Promise<{id:string}
   const url = new URL(request.url);
   const isForceDownload = url.searchParams.get("download") === "1";
 
-  // Nếu người dùng không ép buộc download, thử dùng Microsoft Graph preview URL nếu khả dụng
-  if (!isForceDownload && typeof provider.getDirectUrl === "function") {
-    try {
-      const directUrl = await provider.getDirectUrl(file.object_key);
-      if (directUrl) {
-        return NextResponse.redirect(directUrl, {
-          status: 302,
-          headers: {
-            "Cache-Control": "private, no-cache, no-store, max-age=0, must-revalidate",
-          },
-        });
-      }
-    } catch (directErr) {
-      console.warn("[Storage] Direct preview URL unavailable, streaming inline via API:", directErr);
-    }
-  }
-
-  // Phục vụ tệp trực tiếp từ Storage (OneDrive hoặc Local) hiển thị inline trên trình duyệt
+  // Phục vụ tệp trực tiếp từ Storage (OneDrive hoặc Local) hiển thị inline trên trình duyệt qua API
   try {
     const mime = resolveMimeType(file.original_name, file.mime_type);
     const cleanAscii = (file.original_name || "evidence")
@@ -71,6 +54,7 @@ export async function GET(request: Request, context: {params:Promise<{id:string}
           "Content-Type": mime,
           "Content-Length": String(buffer.length),
           "Content-Disposition": disposition,
+          "X-Content-Type-Options": "nosniff",
           "Cache-Control": "private, max-age=3600",
         },
       });
@@ -82,6 +66,7 @@ export async function GET(request: Request, context: {params:Promise<{id:string}
         "Content-Type": mime,
         "Content-Length": String(object.size),
         "Content-Disposition": disposition,
+        "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, max-age=3600",
       },
     });

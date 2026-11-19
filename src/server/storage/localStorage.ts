@@ -44,7 +44,16 @@ export class LocalStorageProvider implements StorageProvider {
   async head(key: string) {
     const file = await stat(await this.resolve(key));
     if (!file.isFile()) throw new Error("Storage object is not a file.");
-    return { size: file.size, mimeType: key.endsWith(".pdf") ? "application/pdf" : key.endsWith(".png") ? "image/png" : "application/octet-stream" };
+    return {
+      size: file.size,
+      mimeType: key.endsWith(".pdf")
+        ? "application/pdf"
+        : key.endsWith(".png")
+          ? "image/png"
+          : key.endsWith(".jpg") || key.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "application/octet-stream",
+    };
   }
   async read(key: string) {
     const metadata = await this.head(key);

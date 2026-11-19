@@ -3,7 +3,7 @@ import RequiredMark from "@/components/common/RequiredMark";
 import ExpandableText from "@/components/common/ExpandableText";
 
 import { useActionState, useLayoutEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { Upload } from "lucide-react";
+import { Upload, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { saveStudentSubmissionEvidence } from "@/server/actions/submissions/saveStudentSubmissionEvidence";
@@ -38,6 +38,7 @@ type CriteriaItem = {
   autoPassed: boolean;
   autoMessage: string | null;
   contentText: string | null;
+  fileId?: number | null;
   fileName: string | null;
   reviewDecision?: string | null;
   evidenceUnits?: EvidenceUnitItem[];
@@ -49,7 +50,7 @@ type State = {
 };
 
 const initialState: State = { ok: false, message: "" };
-const allowedFileExtensions = [".pdf", ".png"];
+const allowedFileExtensions = [".pdf", ".png", ".jpg", ".jpeg"];
 const maxFileSize = 10 * 1024 * 1024;
 const maxRequestFileSize = 45 * 1024 * 1024;
 type FileState = Record<string, { name: string; error: string }>;
@@ -86,6 +87,8 @@ export default function StudentSubmissionEvidenceForm({
   const router = useRouter();
   const [fileStates, setFileStates] = useState<FileState>({});
   const [noteStates, setNoteStates] = useState<Record<string, string>>({});
+  const [deletedSlotKeys, setDeletedSlotKeys] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
   const [missingEvidence, setMissingEvidence] = useState<string[]>([]);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
   const [flashingTarget, setFlashingTarget] = useState<string | null>(null);
@@ -188,7 +191,7 @@ export default function StudentSubmissionEvidenceForm({
       : "";
     let error = "";
     if (!allowedFileExtensions.includes(extension)) {
-      error = "Định dạng không hợp lệ. Minh chứng chỉ chấp nhận tệp PDF hoặc PNG.";
+      error = "Định dạng không hợp lệ. Minh chứng chỉ chấp nhận tệp PDF, PNG, JPG hoặc JPEG.";
     } else if (file.size > maxFileSize) {
       error = "Tệp vượt quá dung lượng tối đa 10 MB.";
     }
@@ -200,8 +203,51 @@ export default function StudentSubmissionEvidenceForm({
       return;
     }
 
+    setDeletedSlotKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(fieldKey);
+      return next;
+    });
     setFileStates((current) => ({ ...current, [fieldKey]: { name: file.name, error: "" } }));
     toast.success(`Tệp “${file.name}” hợp lệ và sẵn sàng tải lên.`, { id: `evidence-file-${fieldKey}` });
+  }
+
+  async function handleDeleteFile(fieldKey: string, existingFileId?: number | null) {
+    if (fileStates[fieldKey]?.name) {
+      const input = document.querySelector<HTMLInputElement>(`input[name="file_${fieldKey}"]`);
+      if (input) input.value = "";
+      setFileStates((prev) => {
+        const next = { ...prev };
+        delete next[fieldKey];
+        return next;
+      });
+      toast.success("Đã bỏ chọn tệp mới.");
+      return;
+    }
+
+    if (existingFileId) {
+      const confirmDelete = window.confirm("Bạn có chắc chắn muốn xóa tệp minh chứng này không?");
+      if (!confirmDelete) return;
+
+      setIsDeleting((prev) => ({ ...prev, [fieldKey]: true }));
+      try {
+        const res = await fetch(`/api/submissions/files/${existingFileId}`, {
+          method: "DELETE",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast.success("Đã xóa minh chứng.");
+          setDeletedSlotKeys((prev) => new Set(prev).add(fieldKey));
+          router.refresh();
+        } else {
+          toast.error(data.message || "Không thể xóa minh chứng.");
+        }
+      } catch {
+        toast.error("Lỗi kết nối khi xóa minh chứng.");
+      } finally {
+        setIsDeleting((prev) => ({ ...prev, [fieldKey]: false }));
+      }
+    }
   }
 
   async function saveAction(_prev: State, formData: FormData): Promise<State> {
@@ -527,11 +573,17 @@ export default function StudentSubmissionEvidenceForm({
                       {Array.from({ length: reqCount }).map((_, slot) => {
                         const unit = item.evidenceUnits?.[slot];
                         const fieldKey = `${item.code}_${slot}`;
-                        const existingFileName = unit?.fileName ?? (slot === 0 && !item.evidenceUnits?.length ? item.fileName : null);
+                        const unitFileId = unit?.fileId ?? (slot === 0 && !item.evidenceUnits?.length ? item.fileId : null);
+                        const rawFileName = unit?.fileName ?? (slot === 0 && !item.evidenceUnits?.length ? item.fileName : null);
+                        const isDeleted = deletedSlotKeys.has(fieldKey);
+                        const existingFileName = isDeleted ? null : rawFileName;
+                        const existingFileId = isDeleted ? null : unitFileId;
                         const existingNote = unit?.note ?? (slot === 0 && !item.evidenceUnits?.length ? item.contentText : "");
                         const hasExistingFile = Boolean(existingFileName);
                         const isSlotLockedPass = hasExistingFile && (unit?.reviewDecision === "pass" || (slot === 0 && !item.evidenceUnits?.length && item.reviewDecision === "pass") || (item.reviewDecision === "pass" && unit?.reviewDecision !== "fail"));
                         const hasValidNewFile = Boolean(fileStates[fieldKey]?.name && !fileStates[fieldKey]?.error);
+                        const hasAnyFile = hasValidNewFile || hasExistingFile;
+                        const displayedFileName = fileStates[fieldKey]?.name || existingFileName;
                         const currentSlotNote = noteStates[fieldKey] ?? existingNote ?? "";
                         const isSlotNoteEdited = noteStates[fieldKey] !== undefined && currentSlotNote.trim() !== (existingNote ?? "").trim();
                         const isSlotFailedRaw = !isSlotLockedPass && hasExistingFile && (unit?.reviewDecision === "fail" || (!item.evidenceUnits?.length && item.reviewDecision === "fail"));
@@ -587,9 +639,9 @@ export default function StudentSubmissionEvidenceForm({
                                       : "border-slate-200 bg-slate-50"
                                 }`}
                               >
-                                <div className="flex flex-wrap items-stretch gap-3">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <label
-                                    className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
                                       !isSlotDisabled
                                         ? isSlotHighlighted
                                           ? "bg-red-600 text-white cursor-pointer hover:bg-red-700"
@@ -600,11 +652,11 @@ export default function StudentSubmissionEvidenceForm({
                                     }`}
                                   >
                                     <Upload size={14} />
-                                    {isSlotFailedRaw ? "Tải lại tệp" : "Tải tệp"}
+                                    {hasAnyFile ? "Thay thế tệp" : isSlotFailedRaw ? "Tải lại tệp" : "Tải tệp"}
                                     <input
                                       type="file"
                                       name={`file_${fieldKey}`}
-                                      accept=".pdf,.png,application/pdf,image/png"
+                                      accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                                       className="hidden"
                                       disabled={isSlotDisabled}
                                       aria-invalid={isSlotHighlighted}
@@ -614,10 +666,35 @@ export default function StudentSubmissionEvidenceForm({
                                   </label>
 
                                   <div className="flex min-w-0 flex-1 items-center text-xs text-slate-600">
-                                    <span className={`truncate ${isSlotSatisfied ? "font-medium text-emerald-800" : ""}`}>
-                                      {fileStates[fieldKey]?.name || existingFileName || "Chưa có tệp được chọn"}
-                                    </span>
+                                    {existingFileId && !hasValidNewFile ? (
+                                      <a
+                                        href={`/api/submissions/files/${existingFileId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Nhấp để xem minh chứng đã nộp trên tab mới"
+                                        className="truncate font-medium text-blue-700 hover:text-blue-900 underline underline-offset-2"
+                                      >
+                                        {displayedFileName}
+                                      </a>
+                                    ) : (
+                                      <span className={`truncate ${isSlotSatisfied ? "font-medium text-emerald-800" : ""}`}>
+                                        {displayedFileName || "Chưa có tệp được chọn"}
+                                      </span>
+                                    )}
                                   </div>
+
+                                  {hasAnyFile && !isSlotLockedPass && !isSlotDisabled ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteFile(fieldKey, existingFileId)}
+                                      disabled={Boolean(isDeleting[fieldKey])}
+                                      title={hasValidNewFile ? "Bỏ tệp vừa chọn" : "Xóa tệp minh chứng này"}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 hover:text-rose-800 transition-colors border border-rose-200 shrink-0 disabled:opacity-50"
+                                    >
+                                      <Trash2 size={13} />
+                                      <span>{isDeleting[fieldKey] ? "Đang xóa..." : "Xóa"}</span>
+                                    </button>
+                                  ) : null}
                                 </div>
                                 {fileStates[fieldKey]?.error ? (
                                   <p className="mt-2 text-xs font-medium text-red-700">
@@ -633,7 +710,7 @@ export default function StudentSubmissionEvidenceForm({
                                   </p>
                                 ) : (
                                   <p className="mt-2 text-xs text-slate-500">
-                                    Chỉ nhận PDF/PNG ≤ 10 MB.
+                                    Chỉ nhận PDF, PNG, JPG hoặc JPEG ≤ 10 MB.
                                   </p>
                                 )}
                               </div>
